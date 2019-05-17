@@ -1,0 +1,13 @@
+diff --git a/services/core/java/com/android/server/location/GnssLocationProvider.java b/services/core/java/com/android/server/location/GnssLocationProvider.java
+index 173f76f..ae043df 100644
+--- a/services/core/java/com/android/server/location/GnssLocationProvider.java
++++ b/services/core/java/com/android/server/location/GnssLocationProvider.java
+@@ -445,6 +445,8 @@ public class GnssLocationProvider implements LocationProviderInterface {
+         public void onAvailable(Network network) {
+             requestUtcTime();
+             xtraDownloadRequest();
++            // Always on, notify HAL so it can get data it needs
++            sendMessage(UPDATE_NETWORK_STATE, 0 /*arg*/, network);
+         }
+     };
+ 

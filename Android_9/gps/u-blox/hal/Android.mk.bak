@@ -1,0 +1,228 @@
+##############################################################################
+#
+#Copyright(C) u - blox AG
+#u - blox AG, Thalwil, Switzerland
+#
+#All rights reserved.
+#
+#Permission to use, copy, modify, and distribute this software for any
+#purpose without fee is hereby granted, provided that this entire notice
+#is included in all copies of any software which is or includes a copy
+# or modification of this software and in all copies of the supporting
+#documentation for such software.
+#
+#THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+#WARRANTY.IN PARTICULAR, NEITHER THE AUTHOR NOR U - BLOX MAKES ANY
+#REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+#OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+#
+###############################################################################
+#
+#Project : Android GNSS Driver
+#
+###############################################################################
+#$Id$
+#$HeadURL$
+###############################################################################
+
+
+#Android 8 uses the new HIDL API
+USE_HIDL ?= $(shell test $(PLATFORM_SDK_VERSION) -ge 26 && echo true)
+#USE_HIDL := false
+$(warning ==========gps ublox===USE_HIDL=$(USE_HIDL)=====)
+
+#LOCAL_CFLAGS += -Wno-unused-variable -Wno-extern-c-compat -Wno-header-guard -Wno-unused-function -Wno-gnu-designator \
+#    -Wno-unused-value
+
+#SUPL is disabled by default
+SUPL_ENABLED ?= 0
+
+#Enable GNSS build by default for Android
+RAW_MEAS_ENABLED := true
+
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+#LOCAL_CLANG : = true
+#LOCAL_SANITIZE : = address
+
+#For some targets it might be required to use sysv as hash style
+#LOCAL_LDFLAGS += -Wl, --hash - style = sysv
+
+LOCAL_PARSER_PATH=../parser
+LOCAL_SUPL_PATH=../supl
+LOCAL_ASN1_PATH=../asn1
+LOCAL_AGNSS_PATH=../agnss
+
+LOCAL_SHARED_LIBRARIES := \
+	liblog \
+	libcutils
+
+ifeq ($(USE_HIDL), true)
+LOCAL_SHARED_LIBRARIES += \
+	libhidlbase \
+	libhidltransport \
+	libutils \
+	libhardware \
+	android.hardware.gnss@1.0
+endif
+
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH) \
+	$(LOCAL_PATH)/$(LOCAL_PARSER_PATH) \
+	$(LOCAL_PATH)/.. \
+    $(LOCAL_PATH)/../../../libhardware/include \
+    $(LOCAL_PATH)/../../../../system/core/libcutils/include
+
+$(warning ==========gps ublox===LOCAL_C_INCLUDES=$(LOCAL_C_INCLUDES)=====)
+PARSER_SRC_FILES := \
+	$(LOCAL_PARSER_PATH)/database.cpp \
+	$(LOCAL_PARSER_PATH)/parserbuffer.cpp \
+	$(LOCAL_PARSER_PATH)/protocolnmea.cpp \
+	$(LOCAL_PARSER_PATH)/protocolubx.cpp \
+	$(LOCAL_PARSER_PATH)/protocolunknown.cpp
+
+LOCAL_SRC_FILES := \
+	$(PARSER_SRC_FILES) \
+	gps_thread.cpp \
+	ubx_cfg.cpp \
+	ubx_localDb.cpp \
+	ubx_log.cpp \
+	ubx_moduleIf.cpp \
+	ubx_rilIf.cpp \
+	ubx_timer.cpp \
+	ubx_serial.cpp \
+	ubx_tcpServer.cpp \
+	ubx_udpServer.cpp \
+	ubx_xtraIf.cpp \
+	ubxgpsstate.cpp
+
+ifeq ($(USE_HIDL), true)
+LOCAL_SRC_FILES += \
+	$(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/hidl/Gnss*.cpp)) \
+	$(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/hidl/AGnss*.cpp)) \
+	$(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/hidl/Thread*.cpp))
+endif
+
+ifeq ($(RAW_MEAS_ENABLED), true)
+	LOCAL_SRC_FILES += \
+					   ubx_gpsMeasIf.cpp \
+					   ubx_gpsNavMesIf.cpp \
+					   ubx_gnssConfIf.cpp \
+					   ubx_androidHelper.cpp
+	LOCAL_CFLAGS += \
+		-DRAW_MEAS_ENABLED
+endif
+
+LOCAL_CFLAGS += \
+	-DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION) \
+	-DUNIX_API \
+	-Wno-date-time \
+	-DANDROID_BUILD \
+	-DANDROID_GNSS_DRIVER_REVISION=\"$(shell git -C $(LOCAL_PATH) rev-parse --verify HEAD)\"
+
+#Uncomment the following lines to enable
+#the local UDP tunnel for communication
+#with the receiver.For debugging use only !
+#LOCAL_CFLAGS += # - DUDP_SERVER_PORT = 46434
+
+#Uncomment the following lines to enable
+#the local TCP tunnel for communication
+#with the receiver.For debugging use only !
+#LOCAL_CFLAGS += # - DTCP_SERVER_PORT = 42434
+
+
+#Uncomment the following linnes to enable
+#debugging messages in logcat for the
+#following message types after they have
+#been read from the receiver and parsed
+#by the parser:
+#* Sent and received UBX commands(hex)
+#* Received NMEA messages(string)
+#* Received unknown messages(hex)
+#LOCAL_CFLAGS += # - DMSG_UBX_LOG_OUTPUT # - DMSG_NMEA_LOG_OUTPUT # -          \
+                 DMSG_UNKNOWN_LOG_OUTPUT
+
+#Uncomment the following lines to enable
+#debugging messages for data written to
+#the serial line and data read from the
+#serial line(the same is valid for
+#I2C logging):
+#LOCAL_CFLAGS += # - DUBX_SERIAL_EXTENSIVE_LOGGING
+
+LOCAL_STATIC_LIBRARIES += libAgnss
+
+#Additions for SUPL
+ifeq ($(SUPL_ENABLED),1)
+LOCAL_C_INCLUDES += external/openssl/include/
+LOCAL_C_INCLUDES += external/openssl/
+LOCAL_C_INCLUDES += external/
+
+LOCAL_SHARED_LIBRARIES += libcrypto
+LOCAL_SHARED_LIBRARIES += libssl
+LOCAL_STATIC_LIBRARIES += libAsn1
+
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/$(LOCAL_SUPL_PATH) \
+	$(LOCAL_PATH)/$(LOCAL_ASN1_PATH) \
+	$(LOCAL_PATH)/$(LOCAL_AGNSS_PATH)
+
+SUPL_SOURCE_FILES := \
+	$(LOCAL_SUPL_PATH)/rrlpdecod.cpp \
+	$(LOCAL_SUPL_PATH)/rrlpmanager.cpp \
+	$(LOCAL_SUPL_PATH)/suplSMmanager.cpp \
+	$(LOCAL_SUPL_PATH)/upldecod.cpp \
+	$(LOCAL_SUPL_PATH)/uplsend.cpp \
+	$(LOCAL_SUPL_PATH)/supl_connection.cpp \
+	ubx_agpsIf.cpp \
+	ubx_niIf.cpp
+
+LOCAL_SRC_FILES += $(SUPL_SOURCE_FILES)
+LOCAL_CFLAGS += -DSUPL_ENABLED
+#LOCAL_CFLAGS += -UNDEBUG
+
+#Uncomment the line below for test with SUPL Test suite
+#LOCAL_CFLAGS += -DSUPL_FQDN_SLP = '"slp.rs.de"'
+
+endif
+
+MGA_VERSION := $(shell cat ${LOCAL_PATH}/../agnss/mga/src/libMga.h | grep "define LIBMGA_VERSION" | grep -oPe '(?<=").*(?=\")')
+ifeq ($(MGA_VERSION), "")
+$(error Was not able to read base version)
+endif
+ANDROID_DRIVER_VERSION := $(shell cat ${LOCAL_PATH}/version.h | grep "define BASE_VERSION" | grep -oPe '(?<=").*(?=\")')
+ifeq ($(ANDROID_DRIVER_VERSION), "")
+$(error Was not able to read base version)
+endif
+
+#Adding git version to build, path conforms to
+GIT_VERSION := $(shell git -C ${LOCAL_PATH} describe --abbrev=10 --dirty --always --tags)
+$(info $$GIT_VERSION is [${GIT_VERSION}])
+LOCAL_CFLAGS +=        -DGIT_VERSION=\"$(GIT_VERSION)\"
+
+#Adding MGA user agent version to build
+MGA_USER_AGENT := "libMga/${MGA_VERSION} (Android GNSS Driver ${ANDROID_DRIVER_VERSION}/${GIT_VERSION})"
+$(info $$MGA_USER_AGENT is [${MGA_USER_AGENT}])
+LOCAL_CFLAGS +=        -DMGA_USER_AGENT=\"$(MGA_USER_AGENT)\"
+
+ifeq ($(USE_HIDL), true)
+LOCAL_MODULE := android.hardware.gnss@1.0-impl-ubx
+LOCAL_PROPRIETARY_MODULE := true
+else
+LOCAL_MODULE := gps.default
+endif
+
+LOCAL_MODULE_TAGS := eng
+
+LOCAL_PRELINK_MODULE := false
+
+#For multi - arch targets LOCAL_MODULE_RELATIVE_PATH must be used
+#to make sure each build has its own destination
+ifeq ($(TARGET_2ND_ARCH),)
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+else
+LOCAL_MODULE_RELATIVE_PATH := hw
+endif
+
+include $(BUILD_SHARED_LIBRARY)
+

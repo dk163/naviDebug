@@ -1,0 +1,92 @@
+###############################################################################
+#
+# Copyright (C) u-blox AG 
+# u-blox AG, Thalwil, Switzerland
+# 
+# All rights reserved.
+# 
+# Permission to use, copy, modify, and distribute this software for any
+# purpose without fee is hereby granted, provided that this entire notice
+# is included in all copies of any software which is or includes a copy
+# or modification of this software and in all copies of the supporting
+# documentation for such software.
+# 
+# THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTY. IN PARTICULAR, NEITHER THE AUTHOR NOR U-BLOX MAKES ANY
+# REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+# OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+#
+###############################################################################
+#
+# Project: Android GNSS driver
+#
+###############################################################################
+# $Id$
+# $HeadURL$
+###############################################################################
+
+patches for original AOSP
+=========================
+
+suggested installation procedure:
+- repo start <branch_name> <project>
+- cd <project>
+- git apply < path/to/patchfile
+- git add <modified and new files>
+- git commit -a -m "<commit message>"
+
+
+1) SV mask handling
+-----------------------
+
+provided patch file: 4.0.x/v40x_almephmask.patch 
+                     4.3.1_r1/v431r1_almephmask.patch
+                     4.4.2_r2/v442r2_almephmask.patch
+ applies to project: frameworks/base
+     affected files: location/java/android/location/GpsStatus.java
+                     services/java/com/android/server/location/GpsLocationProvider.java
+
+This patch fixes the 32bit SV mask handling to adapt to GLONASS and SBAS SV ids
+(PRNs). This is optional and does not affect performance.
+
+
+2) u-blox GPS setup
+-----------------------
+
+provided patch file: 4.0.x/v40x_ubx_gps_setup.patch
+ applies to project: device/ti/panda
+     affected files: device.mk
+                     fstab.omap4pandaboard
+                     init.omap4pandaboard.rc
+                     ubx-setup.sh 
+
+Adds a ubx-setup.sh script, launched at boot, that sets up networkin on eth0
+and asserts correct permissions on the UART.
+
+This is mainly for internal development and should be adopted to the particular
+setup in use.
+
+
+3) development tools
+-----------------------
+
+provided patch file: 4.0.x/v40x_development.patch (and local_manifest.xml)
+ applies to project: device/ti/panda
+     affected files: full_panda.mk
+
+This adds libncurses, busybox and bash packages to the build. Requires the
+supplied local_manifest.xml installed in the .repo directory.
+
+4) Network state update
+-----------------------
+provided patch file: 7.0.0_r33/v7.0.0_r33_network_update_frameworks_base.patch
+ applies to project: frameworks/base
+     affected files: services/core/java/com/android/server/location/GnssLocationProvider.java
+
+Android 7.0.0 contains a bug which prevents the Android framework from
+notifying the GNSS HAL of changes in the network state. This prevents
+the aiding functionality of the driver from working properly in an
+unmodified framework.
+
+By applying the provided patch, Android 7.0.0 is modified to
+behave similarly to previous versions again.

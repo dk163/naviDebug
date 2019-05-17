@@ -1,0 +1,37 @@
+###############################################################################
+#
+# Copyright (C) u-blox AG
+# u-blox AG, Thalwil, Switzerland
+#
+# All rights reserved.
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose without fee is hereby granted, provided that this entire notice
+# is included in all copies of any software which is or includes a copy
+# or modification of this software and in all copies of the supporting
+# documentation for such software.
+#
+# THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTY. IN PARTICULAR, NEITHER THE AUTHOR NOR U-BLOX MAKES ANY
+# REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+# OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+#
+###############################################################################
+#
+# Project: Android GNSS Driver
+#
+###############################################################################
+# $Id$
+# $HeadURL$
+###############################################################################
+
+u-blox Android GNSS driver
+
+- This directory goes into hardware/u-blox/gps.
+- Apply patches (see patches/README) as required.
+- Build the module using "mm" or "mm -B" and update the target using
+  the rebirth.pl script
+  -or- make the full target image(s) and flash using fastboot.
+- To enable SELinux support add the following file in the device BoardConfig.mk
+  and rebuild the image:
+    BOARD_SEPOLICY_DIRS += hardware/u-blox/gps/sepolicy

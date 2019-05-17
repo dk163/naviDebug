@@ -1,0 +1,54 @@
+
+project device/linaro/hikey/
+diff --git a/device-common.mk b/device-common.mk
+index 8a365a8..e7f619e 100644
+--- a/device-common.mk
++++ b/device-common.mk
+@@ -73,7 +73,9 @@ PRODUCT_PACKAGES += android.hardware.power@1.0-impl
+ 
+ #GNSS HAL
+ PRODUCT_PACKAGES += \
+-    android.hardware.gnss@1.0-impl
++    android.hardware.gnss@1.0-impl \
++    gps.default \
++    uSTAR
+ 
+ # Keymaster HAL
+ PRODUCT_PACKAGES += \
+diff --git a/sepolicy/file_contexts b/sepolicy/file_contexts
+index e92402b..235a8f6 100644
+--- a/sepolicy/file_contexts
++++ b/sepolicy/file_contexts
+@@ -8,5 +8,7 @@
+ /dev/hci_tty           u:object_r:hci_attach_dev:s0
+ /dev/ttyAMA1           u:object_r:hci_attach_dev:s0
+ /dev/ttyAMA4           u:object_r:hci_attach_dev:s0
++/dev/ttyUSB[0-9]*      u:object_r:serial_device:s0
+ /system/vendor/bin/uim u:object_r:hci_attach_exec:s0
+ /system/vendor/bin/hw/android\.hardware\.bluetooth@1\.0-service\.hikey      u:object_r:hal_bluetooth_hikey_exec:s0
+diff --git a/ueventd.common.rc b/ueventd.common.rc
+index c96300f..aa45519 100644
+--- a/ueventd.common.rc
++++ b/ueventd.common.rc
+@@ -1,5 +1,6 @@
+ /dev/hci_tty     0666 root root
+ /dev/ttyAMA1     0660 bluetooth bluetooth
+ /dev/ttyAMA4     0660 bluetooth bluetooth
++/dev/ttyUSB0     0660 system gps
+ /dev/mali        0666 system graphics
+ /dev/mali0       0666 system graphics
+
+project system/sepolicy/
+diff --git a/private/system_server.te b/private/system_server.te
+index 40c5382..465eb5e 100644
+--- a/private/system_server.te
++++ b/private/system_server.te
+@@ -191,6 +191,8 @@ hal_client_domain(system_server, hal_configstore)
+ hal_client_domain(system_server, hal_contexthub)
+ hal_client_domain(system_server, hal_fingerprint)
+ hal_client_domain(system_server, hal_gnss)
++passthrough_hal_client_domain(system_server, hal_gnss)
++allow system_server serial_device:chr_file rw_file_perms;
+ hal_client_domain(system_server, hal_graphics_allocator)
+ hal_client_domain(system_server, hal_ir)
+ hal_client_domain(system_server, hal_light)

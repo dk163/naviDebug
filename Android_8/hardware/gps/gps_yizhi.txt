@@ -1,0 +1,129 @@
+diff --git a/device/fsl/imx8/mek_8q.mk b/device/fsl/imx8/mek_8q.mk
+old mode 100644
+new mode 100755
+index 0da260b..3b88c3c
+--- a/device/fsl/imx8/mek_8q.mk
++++ b/device/fsl/imx8/mek_8q.mk
+@@ -180,6 +180,11 @@ PRODUCT_PACKAGES += \
+     wifilogd \
+     wificond
+ 
++#GPS GNSS HAL
++PRODUCT_PACKAGES += \
++    android.hardware.gnss@1.0-impl \
++	 android.hardware.gnss@1.0-service
++    
+ # Qcom WiFi Firmware
+ PRODUCT_COPY_FILES += \
+     vendor/nxp/qca-wifi-bt/1CQ_QCA6174A_LEA_2.0/lib/firmware/qca6174/bdwlan30.bin:vendor/firmware/bdwlan30.bin \
+@@ -194,6 +199,12 @@ PRODUCT_COPY_FILES += \
+     vendor/nxp/qca-wifi-bt/1CQ_QCA6174A_LEA_2.0/lib/firmware/rampatch_tlv_3.2.tlv:vendor/firmware/rampatch_tlv_3.2.tlv \
+     vendor/nxp/qca-wifi-bt/qca_proprietary/Android_HAL/wcnss_filter_mek_8q:vendor/bin/wcnss_filter
+ 
++#zhangzhenbang u-blox GPS
++PRODUCT_COPY_FILES += \
++		hardware/gps/u-blox/gps.conf:system/etc/gps.conf        \
++		hardware/gps/u-blox/u-blox.conf:system/etc/u-blox.conf      \
++		hardware/gps/u-blox/u-blox-tbox.conf:system/etc/u-blox-tbox.conf
++        
+ # Keymaster HAL
+ PRODUCT_PACKAGES += \
+     android.hardware.keymaster@3.0-impl \
+diff --git a/device/fsl/mek_8q/init.rc b/device/fsl/mek_8q/init.rc
+index 694fde5..bc9ad26 100755
+--- a/device/fsl/mek_8q/init.rc
++++ b/device/fsl/mek_8q/init.rc
+@@ -128,6 +128,22 @@ on early-boot
+     # Set WiFi Display Source VideoBitRate Adaptive
+     setprop media.wfd.video-bitrate 3000000
+ 
++    # Create directories for Location services
++    mkdir /data/misc/location 0770 gps gps
++    mkdir /data/misc/location/mq 0770 gps gps
++    mkdir /data/misc/location/xtwifi 0770 gps gps
++    mkdir /data/misc/location/gpsone_d 0770 system gps
++    mkdir /data/misc/location/quipc 0770 gps system
++    mkdir /data/misc/location/gsiff 0770 gps gps
++
++    # migrating the GNSS hal to vendor requires this to be relabeled; the
++    # directory itself is created by /vendor/bin/xtra-daemon
++    chown gps gps /data/misc/location/xtra
++    chmod 0750 /data/misc/location/xtra
++    chown gps gps /data/misc/location/xtra/socket_hal_xtra
++    chmod 0660 /data/misc/location/xtra/socket_hal_xtra
++    chown gps gps /data/misc/location/xtra/xtra.sqlite
++
+ service wpa_supplicant /vendor/bin/hw/wpa_supplicant \
+     -ip2p0 -Dnl80211 -c/data/misc/wifi/p2p_supplicant.conf -N \
+     -iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf \
+diff --git a/device/fsl/mek_8q/manifest.xml b/device/fsl/mek_8q/manifest.xml
+old mode 100644
+new mode 100755
+index 7744eb0..8d4fa11
+--- a/device/fsl/mek_8q/manifest.xml
++++ b/device/fsl/mek_8q/manifest.xml
+@@ -1,5 +1,14 @@
+ <manifest version="1.0" type="device">
+     <hal format="hidl">
++        <name>android.hardware.gnss</name>
++        <transport>hwbinder</transport>
++        <version>1.0</version>
++        <interface>
++            <name>IGnss</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++    <hal format="hidl">
+ 	<name>android.hardware.graphics.allocator</name>
+         <transport>hwbinder</transport>
+ 	<impl level="generic"></impl>
+diff --git a/device/fsl/mek_8q/manifest_car.xml b/device/fsl/mek_8q/manifest_car.xml
+old mode 100644
+new mode 100755
+index b99ae3d..24e03da
+--- a/device/fsl/mek_8q/manifest_car.xml
++++ b/device/fsl/mek_8q/manifest_car.xml
+@@ -1,5 +1,14 @@
+ <manifest version="1.0" type="device">
+     <hal format="hidl">
++        <name>android.hardware.gnss</name>
++        <transport>hwbinder</transport>
++        <version>1.0</version>
++        <interface>
++            <name>IGnss</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++    <hal format="hidl">
+ 	<name>android.hardware.graphics.allocator</name>
+         <transport>hwbinder</transport>
+ 	<impl level="generic"></impl>
+diff --git a/device/fsl/mek_8q/ueventd.freescale.rc b/device/fsl/mek_8q/ueventd.freescale.rc
+old mode 100644
+new mode 100755
+index 3a3e5af..956b5d9
+--- a/device/fsl/mek_8q/ueventd.freescale.rc
++++ b/device/fsl/mek_8q/ueventd.freescale.rc
+@@ -6,6 +6,7 @@
+ /dev/ttymxc2              0660   bluetooth  bluetooth
+ /dev/ttymxc4              0660   bluetooth  bluetooth
+ /dev/ttyLP1               0660   bluetooth  bluetooth
++/dev/ttyLP2               0660   system     gps
+ /dev/snd/*                0660   system     audio
+ /dev/ttyUSB*              0640   radio      radio
+ /dev/ttyACM*              0640   radio      radio
+diff --git a/system/sepolicy/public/domain.te b/system/sepolicy/public/domain.te
+old mode 100644
+new mode 100755
+index 1af9235..4fd105a
+--- a/system/sepolicy/public/domain.te
++++ b/system/sepolicy/public/domain.te
+@@ -851,6 +851,7 @@ neverallow {
+   domain
+   -system_server
+   -system_app
++  -hal_gnss
+   -init
+   -installd # for relabelfrom and unlink, check for this in explicit neverallow
+   with_asan(`-asan_extract')
+#+hardware\gps\u-blox目录

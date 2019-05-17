@@ -1,0 +1,24 @@
+{
+    "files.associations": {
+        "autonavi_parser.h": "c",
+        "gps.h": "c",
+        "hardware.h": "c",
+        "cdefs.h": "c",
+        "unistd.h": "c",
+        "common.h": "c",
+        "pthread.h": "c",
+        "types.h": "c",
+        "stdint.h": "c",
+        "stdlib.h": "c",
+        "stdio.h": "c",
+        "strings.h": "c",
+        "alloca.h": "c",
+        "memory.h": "c",
+        "*.inc": "cpp",
+        "xiosbase": "c",
+        "xlocale": "c",
+        "initializer_list": "c",
+        "type_traits": "c",
+        "xstring": "c"
+    }
+}

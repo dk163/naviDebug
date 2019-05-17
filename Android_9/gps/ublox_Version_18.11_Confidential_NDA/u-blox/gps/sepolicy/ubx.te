@@ -1,0 +1,57 @@
+###############################################################################
+#
+# Copyright (C) u-blox AG
+# u-blox AG, Thalwil, Switzerland
+#
+# All rights reserved.
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose without fee is hereby granted, provided that this entire notice
+# is included in all copies of any software which is or includes a copy
+# or modification of this software and in all copies of the supporting
+# documentation for such software.
+#
+# THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTY. IN PARTICULAR, NEITHER THE AUTHOR NOR U-BLOX MAKES ANY
+# REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+# OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+#
+###############################################################################
+#
+# Project: Android GNSS Driver
+#
+###############################################################################
+
+# ubx domain type
+type hal_gnss_ubx, domain, mlstrustedobject;
+
+# service file type
+type hal_gnss_ubx_exec, exec_type, file_type, vendor_file_type;
+
+# persistence.agnss type
+type ubx_gnss_file, data_file_type, file_type;
+
+# make domain use permissions of hal_gnss_server
+hal_server_domain(hal_gnss_ubx, hal_gnss);
+# make domain use permissions of hal_wifi_server (mandatory to be able to use net_domain)
+hal_server_domain(hal_gnss_ubx, hal_wifi);
+
+# allow network access
+net_domain(hal_gnss_ubx)
+
+# set up a transition from init to the daemon domain
+init_daemon_domain(hal_gnss_ubx)
+
+# allow access to /dev/ttyACM0 and /dev/i2c-[0-9]
+allow hal_gnss_ubx tty_device:chr_file rw_file_perms;
+
+# allow access to /data/vendor/persistence.agnss
+file_type_auto_trans(hal_gnss_ubx, vendor_data_file, ubx_gnss_file)
+allow hal_gnss_ubx vendor_data_file:{ file lnk_file } { getattr open read write create };
+allow hal_gnss_ubx vendor_data_file:dir { add_name open read write create };
+allow hal_gnss_ubx vendor_data_file:dir rw_dir_perms;
+allow hal_gnss_ubx hal_gnss_ubx:{ file lnk_file } rw_file_perms;
+allow ubx_gnss_file labeledfs:filesystem associate;
+
+# allow init to execute ubx service with LD_LIBRARY_PATH set
+allow init hal_gnss_ubx:process noatsecure;

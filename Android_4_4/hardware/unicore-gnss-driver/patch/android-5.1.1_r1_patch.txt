@@ -1,0 +1,434 @@
+
+project frameworks/base/
+diff --git a/frameworks/base/location/java/android/location/GpsStatus.java b/frameworks/base/location/java/android/location/GpsStatus.java
+index 4af55a6..a31b608 100644
+--- a/frameworks/base/location/java/android/location/GpsStatus.java
++++ b/frameworks/base/location/java/android/location/GpsStatus.java
+@@ -18,6 +18,7 @@ package android.location;
+ 
+ import java.util.Iterator;
+ import java.util.NoSuchElementException;
++import android.util.Log;
+ 
+ 
+ /**
+@@ -139,8 +140,8 @@ public final class GpsStatus {
+      * Is synchronized to ensure that GPS status updates are atomic.
+      */
+     synchronized void setStatus(int svCount, int[] prns, float[] snrs,
+-            float[] elevations, float[] azimuths, int ephemerisMask,
+-            int almanacMask, int usedInFixMask) {
++            float[] elevations, float[] azimuths, int[] ephemerisMask,
++            int[] almanacMask, int[] usedInFixMask) {
+         int i;
+ 
+         for (i = 0; i < mSatellites.length; i++) {
+@@ -149,7 +150,9 @@ public final class GpsStatus {
+         
+         for (i = 0; i < svCount; i++) {
+             int prn = prns[i] - 1;
+-            int prnShift = (1 << prn);
++            int prnShift = (1 << (prn-1)%32));
++            int off = (prn-1)/32;
++
+             if (prn >= 0 && prn < mSatellites.length) {
+                 GpsSatellite satellite = mSatellites[prn];
+     
+@@ -157,9 +160,9 @@ public final class GpsStatus {
+                 satellite.mSnr = snrs[i];
+                 satellite.mElevation = elevations[i];
+                 satellite.mAzimuth = azimuths[i];
+-                satellite.mHasEphemeris = ((ephemerisMask & prnShift) != 0);
+-                satellite.mHasAlmanac = ((almanacMask & prnShift) != 0);
+-                satellite.mUsedInFix = ((usedInFixMask & prnShift) != 0);
++                satellite.mHasEphemeris = ((ephemerisMask[off] & prnShift) != 0);
++                satellite.mHasAlmanac = ((almanacMask[off] & prnShift) != 0);
++                satellite.mUsedInFix = ((usedInFixMask[off] & prnShift) != 0);
+             }
+         }
+     }
+diff --git a/frameworks/base/location/java/android/location/IGpsStatusListener.aidl b/frameworks/base/location/java/android/location/IGpsStatusListener.aidl
+index 62b1c6b..98c4c11 100644
+--- a/frameworks/base/location/java/android/location/IGpsStatusListener.aidl
++++ b/frameworks/base/location/java/android/location/IGpsStatusListener.aidl
+@@ -28,6 +28,6 @@ oneway interface IGpsStatusListener
+     void onFirstFix(int ttff);
+     void onSvStatusChanged(int svCount, in int[] prns, in float[] snrs, 
+             in float[] elevations, in float[] azimuths, 
+-            int ephemerisMask, int almanacMask, int usedInFixMask);
++            in int[] ephemerisMask, in int[] almanacMask, in int[] usedInFixMask);
+     void onNmeaReceived(long timestamp, String nmea);
+ }
+diff --git a/frameworks/base/location/java/android/location/LocationManager.java b/frameworks/base/location/java/android/location/LocationManager.java
+index 0eb4fdc..c671e68c 100644
+--- a/frameworks/base/location/java/android/location/LocationManager.java
++++ b/frameworks/base/location/java/android/location/LocationManager.java
+@@ -1433,8 +1433,8 @@ public class LocationManager {
+ 
+         @Override
+         public void onSvStatusChanged(int svCount, int[] prns, float[] snrs,
+-                float[] elevations, float[] azimuths, int ephemerisMask,
+-                int almanacMask, int usedInFixMask) {
++                float[] elevations, float[] azimuths, int[] ephemerisMask,
++                int[] almanacMask, int[] usedInFixMask) {
+             if (mListener != null) {
+                 mGpsStatus.setStatus(svCount, prns, snrs, elevations, azimuths,
+                         ephemerisMask, almanacMask, usedInFixMask);
+diff --git a/frameworks/base/services/core/java/com/android/server/location/GpsLocationProvider.java b/frameworks/base/services/core/java/com/android/server/location/GpsLocationProvider.java
+index 5ae6300..b8fb8da 100644
+--- a/frameworks/base/services/core/java/com/android/server/location/GpsLocationProvider.java
++++ b/frameworks/base/services/core/java/com/android/server/location/GpsLocationProvider.java
+@@ -1492,34 +1492,44 @@ public class GpsLocationProvider implements LocationProviderInterface {
+      * called from native code to update SV info
+      */
+     private void reportSvStatus() {
+-        int svCount = native_read_sv_status(mSvs, mSnrs, mSvElevations, mSvAzimuths, mSvMasks);
++        int svCount = native_read_sv_status(mSvs, mSnrs, mSvElevations, mSvAzimuths, mSvMasks1, mSvMasks2, mSvMasks3);
+         mListenerHelper.onSvStatusChanged(
+                 svCount,
+                 mSvs,
+                 mSnrs,
+                 mSvElevations,
+                 mSvAzimuths,
+-                mSvMasks[EPHEMERIS_MASK],
+-                mSvMasks[ALMANAC_MASK],
+-                mSvMasks[USED_FOR_FIX_MASK]);
++                mSvMasks1,
++                mSvMasks2,
++                mSvMasks3);
+ 
+         if (VERBOSE) {
++/*
+             Log.v(TAG, "SV count: " + svCount +
+                     " ephemerisMask: " + Integer.toHexString(mSvMasks[EPHEMERIS_MASK]) +
+                     " almanacMask: " + Integer.toHexString(mSvMasks[ALMANAC_MASK]));
++*/
+             for (int i = 0; i < svCount; i++) {
++                int prn = mSvs[i] - 1;
++                int prnShift = (1 << (prn%32));
++                int off = prn/32;
++
+                 Log.v(TAG, "sv: " + mSvs[i] +
+                         " snr: " + mSnrs[i]/10 +
+                         " elev: " + mSvElevations[i] +
+                         " azimuth: " + mSvAzimuths[i] +
+-                        ((mSvMasks[EPHEMERIS_MASK] & (1 << (mSvs[i] - 1))) == 0 ? "  " : " E") +
+-                        ((mSvMasks[ALMANAC_MASK] & (1 << (mSvs[i] - 1))) == 0 ? "  " : " A") +
+-                        ((mSvMasks[USED_FOR_FIX_MASK] & (1 << (mSvs[i] - 1))) == 0 ? "" : "U"));
++                        ((mSvMasks1[off] & prnShift) == 0 ? "  " : " E") +
++                        ((mSvMasks2[off] & prnShift) == 0 ? "  " : " A") +
++                        ((mSvMasks3[off] & prnShift) == 0 ? "" : "U"));
+             }
+         }
+ 
+         // return number of sets used in fix instead of total
+-        updateStatus(mStatus, Integer.bitCount(mSvMasks[USED_FOR_FIX_MASK]));
++        int in_fix = 0;
++        for(int i = 0; i < 8; i++) {
++            in_fix += Integer.bitCount(mSvMasks3[i]);
++        }
++        updateStatus(mStatus, in_fix);
+ 
+         if (mNavigating && mStatus == LocationProvider.AVAILABLE && mLastFixTime > 0 &&
+             System.currentTimeMillis() - mLastFixTime > RECENT_FIX_TIMEOUT) {
+@@ -2149,17 +2159,19 @@ public class GpsLocationProvider implements LocationProviderInterface {
+     }
+ 
+     // for GPS SV statistics
+-    private static final int MAX_SVS = 32;
++    private static final int MAX_SVS = 256;
+     private static final int EPHEMERIS_MASK = 0;
+-    private static final int ALMANAC_MASK = 1;
+-    private static final int USED_FOR_FIX_MASK = 2;
++    private static final int ALMANAC_MASK = 8;
++    private static final int USED_FOR_FIX_MASK = 16;
+ 
+     // preallocated arrays, to avoid memory allocation in reportStatus()
+     private int mSvs[] = new int[MAX_SVS];
+     private float mSnrs[] = new float[MAX_SVS];
+     private float mSvElevations[] = new float[MAX_SVS];
+     private float mSvAzimuths[] = new float[MAX_SVS];
+-    private int mSvMasks[] = new int[3];
++    private int mSvMasks1[] = new int[8];
++    private int mSvMasks2[] = new int[8];
++    private int mSvMasks3[] = new int[8];
+     private int mSvCount;
+     // preallocated to avoid memory allocation in reportNmea()
+     private byte[] mNmeaBuffer = new byte[120];
+@@ -2178,7 +2190,7 @@ public class GpsLocationProvider implements LocationProviderInterface {
+     // returns number of SVs
+     // mask[0] is ephemeris mask and mask[1] is almanac mask
+     private native int native_read_sv_status(int[] svs, float[] snrs,
+-            float[] elevations, float[] azimuths, int[] masks);
++            float[] elevations, float[] azimuths, int[] masks1, int[] masks2, int [] masks3);
+     private native int native_read_nmea(byte[] buffer, int bufferSize);
+     private native void native_inject_location(double latitude, double longitude, float accuracy);
+ 
+diff --git a/frameworks/base/services/core/java/com/android/server/location/GpsStatusListenerHelper.java b/frameworks/base/services/core/java/com/android/server/location/GpsStatusListenerHelper.java
+index 376b4a5..8162529 100644
+--- a/frameworks/base/services/core/java/com/android/server/location/GpsStatusListenerHelper.java
++++ b/frameworks/base/services/core/java/com/android/server/location/GpsStatusListenerHelper.java
+@@ -84,9 +84,9 @@ abstract class GpsStatusListenerHelper extends RemoteListenerHelper<IGpsStatusLi
+             final float[] snrs,
+             final float[] elevations,
+             final float[] azimuths,
+-            final int ephemerisMask,
+-            final int almanacMask,
+-            final int usedInFixMask) {
++            final int[] ephemerisMask,
++            final int[] almanacMask,
++            final int[] usedInFixMask) {
+         Operation operation = new Operation() {
+             @Override
+             public void execute(IGpsStatusListener listener) throws RemoteException {
+diff --git a/frameworks/base/services/core/jni/com_android_server_location_GpsLocationProvider.cpp b/frameworks/base/services/core/jni/com_android_server_location_GpsLocationProvider.cpp
+index 8183321..cf035a4 100644
+--- a/frameworks/base/services/core/jni/com_android_server_location_GpsLocationProvider.cpp
++++ b/frameworks/base/services/core/jni/com_android_server_location_GpsLocationProvider.cpp
+@@ -598,7 +598,7 @@ static void android_location_GpsLocationProvider_delete_aiding_data(JNIEnv* env,
+ 
+ static jint android_location_GpsLocationProvider_read_sv_status(JNIEnv* env, jobject obj,
+         jintArray prnArray, jfloatArray snrArray, jfloatArray elevArray, jfloatArray azumArray,
+-        jintArray maskArray)
++        jintArray maskArray1, jintArray maskArray2, jintArray maskArray3)
+ {
+     // this should only be called from within a call to reportSvStatus
+ 
+@@ -606,7 +606,9 @@ static jint android_location_GpsLocationProvider_read_sv_status(JNIEnv* env, job
+     jfloat* snrs = env->GetFloatArrayElements(snrArray, 0);
+     jfloat* elev = env->GetFloatArrayElements(elevArray, 0);
+     jfloat* azim = env->GetFloatArrayElements(azumArray, 0);
+-    jint* mask = env->GetIntArrayElements(maskArray, 0);
++    jint* mask1 = env->GetIntArrayElements(maskArray1, 0);
++    jint* mask2 = env->GetIntArrayElements(maskArray2, 0);
++    jint* mask3 = env->GetIntArrayElements(maskArray3, 0);
+ 
+     int num_svs = sGpsSvStatus.num_svs;
+     for (int i = 0; i < num_svs; i++) {
+@@ -615,15 +617,20 @@ static jint android_location_GpsLocationProvider_read_sv_status(JNIEnv* env, job
+         elev[i] = sGpsSvStatus.sv_list[i].elevation;
+         azim[i] = sGpsSvStatus.sv_list[i].azimuth;
+     }
+-    mask[0] = sGpsSvStatus.ephemeris_mask;
+-    mask[1] = sGpsSvStatus.almanac_mask;
+-    mask[2] = sGpsSvStatus.used_in_fix_mask;
++
++    for(int i = 0; i < 8; i++) {
++        mask1[i] = sGpsSvStatus.ephemeris_mask[i];
++        mask2[i] = sGpsSvStatus.almanac_mask[i];
++        mask3[i] = sGpsSvStatus.used_in_fix_mask[i];
++    }
+ 
+     env->ReleaseIntArrayElements(prnArray, prns, 0);
+     env->ReleaseFloatArrayElements(snrArray, snrs, 0);
+     env->ReleaseFloatArrayElements(elevArray, elev, 0);
+     env->ReleaseFloatArrayElements(azumArray, azim, 0);
+-    env->ReleaseIntArrayElements(maskArray, mask, 0);
++    env->ReleaseIntArrayElements(maskArray1, mask1, 0);
++    env->ReleaseIntArrayElements(maskArray2, mask2, 0);
++    env->ReleaseIntArrayElements(maskArray3, mask3, 0);
+     return (jint) num_svs;
+ }
+ 
+@@ -1439,7 +1446,7 @@ static JNINativeMethod sMethods[] = {
+             "(I)V",
+             (void*)android_location_GpsLocationProvider_delete_aiding_data},
+     {"native_read_sv_status",
+-            "([I[F[F[F[I)I",
++            "([I[F[F[F[I[I[I)I",
+             (void*)android_location_GpsLocationProvider_read_sv_status},
+     {"native_read_nmea", "([BI)I", (void*)android_location_GpsLocationProvider_read_nmea},
+     {"native_inject_time", "(JJI)V", (void*)android_location_GpsLocationProvider_inject_time},
+
+project hardware/libhardware/
+diff --git a/hardware/libhardware/include/hardware/gps.h b/hardware/libhardware/include/hardware/gps.h
+index e264cf5..f6974ba 100644
+--- a/hardware/libhardware/include/hardware/gps.h
++++ b/hardware/libhardware/include/hardware/gps.h
+@@ -38,7 +38,7 @@ __BEGIN_DECLS
+ typedef int64_t GpsUtcTime;
+ 
+ /** Maximum number of SVs for gps_sv_status_callback(). */
+-#define GPS_MAX_SVS 32
++#define GPS_MAX_SVS 256
+ 
+ /** Maximum number of Measurements in gps_measurement_callback(). */
+ #define GPS_MAX_MEASUREMENT   32
+@@ -480,18 +480,18 @@ typedef struct {
+     /** Represents a bit mask indicating which SVs
+      * have ephemeris data.
+      */
+-    uint32_t    ephemeris_mask;
++    uint32_t    ephemeris_mask[8];
+ 
+     /** Represents a bit mask indicating which SVs
+      * have almanac data.
+      */
+-    uint32_t    almanac_mask;
++    uint32_t    almanac_mask[8];
+ 
+     /**
+      * Represents a bit mask indicating which SVs
+      * were used for computing the most recent position fix.
+      */
+-    uint32_t    used_in_fix_mask;
++    uint32_t    used_in_fix_mask[8];
+ } GpsSvStatus;
+ 
+ 
+
+project packages/apps/Settings/
+diff --git a/packages/apps/Settings/res/values/arrays.xml b/packages/apps/Settings/res/values/arrays.xml
+index f0462f3..a3d5e04 100644
+--- a/packages/apps/Settings/res/values/arrays.xml
++++ b/packages/apps/Settings/res/values/arrays.xml
+@@ -1260,4 +1260,25 @@
+         <item>Pink</item>
+         <item>Red</item>
+     </string-array>
++
++    <!-- Titles for location gps+bd selection preference. [CHAR LIMIT=30] -->
++    <string-array name="location_constellation_titles">
++        <item>GPS only</item>
++        <item>Beidou only</item>
++        <item>GPS+Beidou</item>
++    </string-array>
++
++    <!-- Values for location gps+bd selection preference. -->
++    <string-array name="location_constellation_values" translatable="false" >
++        <item>1</item>
++        <item>2</item>
++        <item>3</item>
++    </string-array>
++
++    <!-- Summaries for location gps+bd selection preference. [CHAR LIMIT=100]-->
++    <string-array name="location_constellation_summaries" >
++        <item>Only GPS satellites are tracked</item>
++        <item>Only Beidou satellites are tracked</item>
++        <item>Both GPS and Beidou satellites are tracked</item>
++    </string-array>
+ </resources>
+diff --git a/packages/apps/Settings/res/values/strings.xml b/packages/apps/Settings/res/values/strings.xml
+index da513b7..294ca13 100644
+--- a/packages/apps/Settings/res/values/strings.xml
++++ b/packages/apps/Settings/res/values/strings.xml
+@@ -6090,4 +6090,7 @@
+    <string name="imei_information_summary">IMEI relative information</string>
+    <string name="slot_number">(Slot<xliff:g id="slot_num">%1$d</xliff:g>)</string>
+ 
++    <!-- set gps or beidou satellites to be tracked during positioning -->
++    <string name="location_constellation_title">"Location Constellation"</string>
++    <string name="location_constellation_dialog_title">"Select satellites constellation when determining your location"</string>
+ </resources>
+diff --git a/packages/apps/Settings/res/xml/development_prefs.xml b/packages/apps/Settings/res/xml/development_prefs.xml
+index 665adce..e6e4dc8 100644
+--- a/packages/apps/Settings/res/xml/development_prefs.xml
++++ b/packages/apps/Settings/res/xml/development_prefs.xml
+@@ -131,6 +131,13 @@
+             android:entries="@array/select_logd_size_titles"
+             android:entryValues="@array/select_logd_size_values" />
+ 
++        <ListPreference
++            android:key="location_constellation"
++            android:title="@string/location_constellation_title"
++            android:dialogTitle="@string/location_constellation_dialog_title"
++            android:entries="@array/location_constellation_titles"
++            android:entryValues="@array/location_constellation_values" />
++
+     </PreferenceCategory>
+ 
+     <PreferenceCategory android:key="debug_input_category"
+diff --git a/packages/apps/Settings/src/com/android/settings/DevelopmentSettings.java b/packages/apps/Settings/src/com/android/settings/DevelopmentSettings.java
+index 6c754e5..4ccd27f 100644
+--- a/packages/apps/Settings/src/com/android/settings/DevelopmentSettings.java
++++ b/packages/apps/Settings/src/com/android/settings/DevelopmentSettings.java
+@@ -167,6 +167,8 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+     private static final String SELECT_LOGD_SIZE_KEY = "select_logd_size";
+     private static final String SELECT_LOGD_SIZE_PROPERTY = "persist.logd.size";
+     private static final String SELECT_LOGD_DEFAULT_SIZE_PROPERTY = "ro.logd.size";
++    private static final String LOCATION_CONSTELLATION_KEY = "location_constellation";
++    private static final String LOCATION_CONSTELLATION_PROPERTY = "persist.sys.config.gps";
+ 
+     private static final String OPENGL_TRACES_KEY = "enable_opengl_traces";
+ 
+@@ -191,6 +193,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+     private static final int REQUEST_CODE_ENABLE_OEM_UNLOCK = 0;
+ 
+     private static String DEFAULT_LOG_RING_BUFFER_SIZE_IN_BYTES = "262144"; // 256K
++    private static String DEFAULT_LOCATION_CONSTELLATION = "3"; // GPS+BD
+ 
+     private IWindowManager mWindowManager;
+     private IBackupManager mBackupManager;
+@@ -260,6 +263,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+     private ListPreference mAnimatorDurationScale;
+     private ListPreference mOverlayDisplayDevices;
+     private ListPreference mOpenGLTraces;
++    private ListPreference mLocationConstellation;
+ 
+     private ListPreference mSimulateColorSpace;
+ 
+@@ -405,6 +409,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+         mWifiAggressiveHandover = findAndInitSwitchPref(WIFI_AGGRESSIVE_HANDOVER_KEY);
+         mWifiAllowScansWithTraffic = findAndInitSwitchPref(WIFI_ALLOW_SCAN_WITH_TRAFFIC_KEY);
+         mLogdSize = addListPreference(SELECT_LOGD_SIZE_KEY);
++        mLocationConstellation = addListPreference(LOCATION_CONSTELLATION_KEY);
+ 
+         mWindowAnimationScale = addListPreference(WINDOW_ANIMATION_SCALE_KEY);
+         mTransitionAnimationScale = addListPreference(TRANSITION_ANIMATION_SCALE_KEY);
+@@ -702,6 +707,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+         updateBugreportOptions();
+         updateForceRtlOptions();
+         updateLogdSizeValues();
++        updateConstellationValues();
+         updateWifiDisplayCertificationOptions();
+         updateWifiVerboseLoggingOptions();
+         updateWifiAggressiveHandoverOptions();
+@@ -1285,6 +1291,38 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+         updateLogdSizeValues();
+     }
+ 
++    private void updateConstellationValues() {
++        if (mLocationConstellation != null) {
++            String currentValue = SystemProperties.get(LOCATION_CONSTELLATION_PROPERTY);
++            String[] values = getResources().getStringArray(R.array.location_constellation_values);
++            String[] titles = getResources().getStringArray(R.array.location_constellation_titles);
++            String[] summaries = getResources().getStringArray(R.array.location_constellation_summaries);
++            int index = titles.length-1; // last entry if not property set(usually gps+bd)
++            for (int i = 0; i < titles.length; i++) {
++                if (currentValue.equals(values[i])) {
++                    index = i;
++                    break;
++                }
++            }
++	    mLocationConstellation.setValue(values[index]);
++	    mLocationConstellation.setSummary(summaries[index]);
++	    mLocationConstellation.setOnPreferenceChangeListener(this);
++        }
++    }
++
++    private void writeConstellationOption(Object newValue) {
++        String currentValue = SystemProperties.get(LOCATION_CONSTELLATION_PROPERTY);
++        if (currentValue != null) {
++            DEFAULT_LOCATION_CONSTELLATION = currentValue;
++        }
++        final String mode = (newValue != null) ?
++                newValue.toString() : DEFAULT_LOCATION_CONSTELLATION;
++
++        SystemProperties.set(LOCATION_CONSTELLATION_PROPERTY, mode);
++        pokeSystemProperties();
++        updateConstellationValues();
++    }
++
+     private void updateCpuUsageOptions() {
+         updateSwitchPreference(mShowCpuUsage, Settings.Global.getInt(getActivity().getContentResolver(),
+                 Settings.Global.SHOW_PROCESSES, 0) != 0);
+@@ -1731,6 +1769,9 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
+         } else if (preference == mLogdSize) {
+             writeLogdSizeOption(newValue);
+             return true;
++        } else if (preference == mLocationConstellation) {
++            writeConstellationOption(newValue);
++            return true;
+         } else if (preference == mWindowAnimationScale) {
+             writeAnimationScaleOption(0, mWindowAnimationScale, newValue);
+             return true;

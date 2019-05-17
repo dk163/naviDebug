@@ -1,0 +1,18 @@
+cc_library_shared {
+    name: "gps.unicore",
+    relative_install_path: "hw",
+    vendor: true,
+    srcs: [
+        "gps.c",
+        "bd_gps.c",
+        "geoid.c",
+    ],
+    shared_libs: [
+        "libcutils",
+        "liblog",
+    ],
+    cflags: [
+        "-Wno-unused-parameter",
+        "-Wno-unused-variable",
+    ],
+}

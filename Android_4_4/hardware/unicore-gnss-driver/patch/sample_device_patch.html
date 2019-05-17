@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!-- This file was created with the aha Ansi HTML Adapter. http://ziz.delphigl.com/tool_aha.php -->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="application/xml+xhtml; charset=UTF-8" />
+<title>sample_device_patch</title>
+</head>
+<body>
+<pre>
+<span style="font-weight:bold;">diff --git a/device/fsl/imx6/etc/ueventd.freescale.rc b/device/fsl/imx6/etc/ueventd.freescale.rc</span>
+<span style="font-weight:bold;">index 2f8226e..1f0ba65 100644</span>
+<span style="font-weight:bold;">--- a/device/fsl/imx6/etc/ueventd.freescale.rc</span>
+<span style="font-weight:bold;">+++ b/device/fsl/imx6/etc/ueventd.freescale.rc</span>
+<span style="color:teal;">@@ -1,4 +1,5 @@</span>
+/dev/pmem_gpu             0660   system     graphics
+<span style="color:green;">/dev/ttymxc1              0660   system     gps</span>
+/dev/ttymxc2              0660   bluetooth  net_bt_stack
+/dev/ttymxc4              0660   bluetooth  net_bt_stack
+/dev/snd/*                0660   system     audio
+<span style="font-weight:bold;">diff --git a/device/fsl/imx6/imx6.mk b/device/fsl/imx6/imx6.mk</span>
+<span style="font-weight:bold;">index e478de1..1269f41 100644</span>
+<span style="font-weight:bold;">--- a/device/fsl/imx6/imx6.mk</span>
+<span style="font-weight:bold;">+++ b/device/fsl/imx6/imx6.mk</span>
+<span style="color:teal;">@@ -340,6 +340,9 @@</span> PRODUCT_COPY_FILES +=	\
+	device/fsl/common/input/eGalax_Touch_Screen.idc:system/usr/idc/eGalax_Touch_Screen.idc \
+	device/fsl/common/input/eGalax_Touch_Screen.idc:system/usr/idc/HannStar_P1003_Touchscreen.idc \
+	device/fsl/common/input/eGalax_Touch_Screen.idc:system/usr/idc/Novatek_NT11003_Touch_Screen.idc \
+	device/fsl/common/input/eGalax_Touch_Screen.idc:system/usr/idc/ft5x0x_ts.idc \
+<span style="color:green;">	device/fsl/imx6/etc/gps/start:system/etc/gps/start \</span>
+<span style="color:green;">	device/fsl/imx6/etc/gps/stop:system/etc/gps/stop \</span>
+	system/core/rootdir/init.rc:root/init.rc \
+	device/fsl/imx6/etc/apns-conf.xml:system/etc/apns-conf.xml \
+	device/fsl/imx6/etc/init.usb.rc:root/init.freescale.usb.rc \
+<span style="font-weight:bold;">diff --git a/device/fsl/sabresd_6dq/BoardConfig.mk b/device/fsl/sabresd_6dq/BoardConfig.mk</span>
+<span style="font-weight:bold;">index e2d036b..5265331 100644</span>
+<span style="font-weight:bold;">--- a/device/fsl/sabresd_6dq/BoardConfig.mk</span>
+<span style="font-weight:bold;">+++ b/device/fsl/sabresd_6dq/BoardConfig.mk</span>
+<span style="color:teal;">@@ -110,7 +110,7 @@</span> $(error &quot;TARGET_USERIMAGES_USE_UBIFS and TARGET_USERIMAGES_USE_EXT4 config open
+endif
+endif
+
+BOARD_KERNEL_CMDLINE := console=ttymxc0,115200 init=/init video=mxcfb0:dev=ldb,bpp=32 video=mxcfb1:off video=mxcfb2:off video=mxcfb3:off vmalloc=256M androidboot.console=ttymxc0 consoleblank=0 androidboot.hardware=freescale cma=384M <span style="color:green;">androidboot.selinux=disabled</span>
+
+ifeq ($(TARGET_USERIMAGES_USE_UBIFS),true)
+#UBI boot command line.
+<span style="font-weight:bold;">diff --git a/device/fsl/sabresd_6dq/init.rc b/device/fsl/sabresd_6dq/init.rc</span>
+<span style="font-weight:bold;">index e65826f..31a14b9 100755</span>
+<span style="font-weight:bold;">--- a/device/fsl/sabresd_6dq/init.rc</span>
+<span style="font-weight:bold;">+++ b/device/fsl/sabresd_6dq/init.rc</span>
+<span style="color:teal;">@@ -91,6 +91,22 @@</span> on boot
+    setprop gsm.ril.delay 15
+    setprop ro.ril.wake_lock_timeout 300
+
+<span style="color:green;"># Set GPS serial GPS power-on GPIO64 pin and reset GPIO60 pin</span>
+<span style="color:green;">    setprop log.tag.GpsLocationProvider VERBOSE</span>
+<span style="color:green;">    setprop ro.kernel.android.gps /dev/gpsdevice</span>
+<span style="color:green;">    setprop um220.gps.hookspath /system/etc/gps</span>
+<span style="color:green;">    symlink /dev/ttymxc1 /dev/gpsdevice</span>
+<span style="color:green;">    write /sys/class/gpio/export 64</span>
+<span style="color:green;">    write /sys/class/gpio/gpio64/direction &quot;out&quot;</span>
+<span style="color:green;">    chown gps gps /sys/class/gpio/gpio64/value</span>
+<span style="color:green;">    chmod 0660 /sys/class/gpio/gpio64/value</span>
+<span style="color:green;">    write /sys/class/gpio/gpio64/value 1</span>
+
+<span style="color:green;">    write /sys/class/gpio/export 60</span>
+<span style="color:green;">    write /sys/class/gpio/gpio60/direction &quot;out&quot;</span>
+<span style="color:green;">    chown gps gps /sys/class/gpio/gpio60/value</span>
+<span style="color:green;">    chmod 0660 /sys/class/gpio/gpio60/value</span>
+<span style="color:green;">    write /sys/class/gpio/gpio60/value 1</span>
+
+#  Enable adb security for JB4.2.2
+    setprop ro.adb.secure 1
+</pre>
+</body>
+</html>

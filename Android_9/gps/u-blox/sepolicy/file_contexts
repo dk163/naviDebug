@@ -1,0 +1,30 @@
+###############################################################################
+#
+# Copyright (C) u-blox AG
+# u-blox AG, Thalwil, Switzerland
+#
+# All rights reserved.
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose without fee is hereby granted, provided that this entire notice
+# is included in all copies of any software which is or includes a copy
+# or modification of this software and in all copies of the supporting
+# documentation for such software.
+#
+# THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTY. IN PARTICULAR, NEITHER THE AUTHOR NOR U-BLOX MAKES ANY
+# REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+# OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+#
+###############################################################################
+#
+# Project: Android GNSS Driver
+#
+###############################################################################
+
+/(vendor|system/vendor)/bin/hw/android\.hardware\.gnss@1\.0-service-ubx       u:object_r:hal_gnss_ubx_exec:s0
+/(vendor|system/vendor)/lib(64)?/hw/android\.hardware\.gnss@1\.0-impl-ubx\.so u:object_r:same_process_hal_file:s0
+
+#/dev/ttyACM([0-9])+             u:object_r:tty_device:s0
+#/dev/i2c-([0-9])+               u:object_r:tty_device:s0
+/data/vendor/persistence\.agnss u:object_r:ubx_gnss_file:s0
