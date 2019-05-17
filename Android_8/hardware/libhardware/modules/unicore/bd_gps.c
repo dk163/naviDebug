@@ -2102,7 +2102,7 @@ static void gps_state_init( GpsState*  state )
 	state->callbacks.set_capabilities_cb(GPS_CAPABILITY_SCHEDULING);
 	D("gps state initialized");
     
-    um220_gps_start();//[ADD]
+    //um220_gps_start();//[ADD]
 
 	return;
 
