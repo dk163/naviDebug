@@ -6,7 +6,7 @@
   File Name     : sys_gps.c
   Version       : Initial Draft
   Author        : Kang
-  Created       : 2019/5/24
+  Created       : 2019/6/01
   Last Modified :
   Description   : Gps Nmea
   Function List :
@@ -60,173 +60,13 @@
               sys_gps_start
               sys_gps_stop
   History       :
-  1.Date        : 2019/5/24
+  1.Date        : 2019/6/01
     Author      : Kang
     Modification: Created file
 
 ******************************************************************************/
 
-#include <errno.h>
-#include <pthread.h>
-#include <termios.h>
-#include <fcntl.h>
-#include <sys/epoll.h>
-#include <math.h>
-#include <time.h>
-#include <semaphore.h>
-#include <signal.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <time.h>
-#include <sys/inotify.h>
-#include <poll.h>
-
-#define  LOG_TAG   "sys_gnss"
-
-#include <cutils/log.h>
-#include <cutils/sockets.h>
-#include <cutils/properties.h>
-#include <hardware/gps.h>
-
-
-/****************************************************
-*	First to change "Baudrate"、"Uart-Port Path"	*
-****************************************************/
-//
-// GPS driver version
-//	
-#define	SYS_GNSS_DRIVER_LIB_VERSION	"SYS_GNSS_LIB_V0.0.1" 
-//
-// *Change Baudrate for your GPS device :
-//
-//	GPS Baudrate = 9600		==>		GPS_DEVICE_BAUDRATE = B9600
-// 	GPS Baudrate = 19200	==>		GPS_DEVICE_BAUDRATE = B19200
-//	GPS Baudrate = 38400	==>		GPS_DEVICE_BAUDRATE = B38400
-//	GPS Baudrate = 57600	==>		GPS_DEVICE_BAUDRATE = B57600
-//	GPS Baudrate = 115200	==>		GPS_DEVICE_BAUDRATE = B115200
-//
-#define GPS_DEVICE_BAUDRATE		B115200
-//
-// This "path" for your UART port number ==> mapping to "ttymxcX" ( X maybe is 1、2、3 ... )。
-//
-#define GPS_DEVICE_PATH		"/dev/ttyUSB1"
-
-#define		NMEA_MAX_SIZE  	168
-
-#define		CMD_MAX_LEN		166
-
-#define  GPS_DEBUG
-#undef	 GPS_DEBUG_TOKEN	
-
-#define  DFR(...)   ALOGD(__VA_ARGS__)
-
-#ifdef GPS_DEBUG
-#  define  D(...)   ALOGD(__VA_ARGS__)
-#else
-#  define  D(...)   ((void)0)
-#endif
-
-
-#define GPS_STATUS_CB(_cb, _s)    \
-  if ((_cb).status_cb) {          \
-    GpsStatus gps_status;         \
-    gps_status.status = (_s);     \
-    (_cb).status_cb(&gps_status); \
-    DFR("gps status callback: 0x%x", _s); \
-  }
-
-
-enum {
-  STATE_QUIT  = 0,
-  STATE_INIT  = 1,
-  STATE_START = 2
-};
-
-typedef struct
-{
-    int valid;
-    double systime;
-    GpsUtcTime timestamp;
-} AthTimemap_t;
-
-typedef struct {
-    int     pos;
-    int     overflow;
-    int     utc_year;
-    int     utc_mon;
-    int     utc_day;
-    int     utc_diff;
-    GpsLocation  fix;	
-	GnssSvStatus gnss_sv_info;
-    int     sv_status_changed;
-    char    in[ NMEA_MAX_SIZE+1 ];
-    int     gsa_fixed;
-    AthTimemap_t timemap;
-} NmeaReader;
-
-typedef struct {
-    int                     init;
-    int                     fd;
-    GpsCallbacks            callbacks;
-    pthread_t               thread;
-    pthread_t		    nmea_thread;
-    int                     control[2];
-    int                     fix_freq;
-    sem_t                   fix_sem;
-    int                     first_fix;
-    NmeaReader              reader;
-} GpsState;
-
-
-static GpsCallbacks* g_gpscallback = 0;
-
-static int gps_opentty(GpsState *state);
-static void	gps_closetty(GpsState *state);
-static void	gps_wakeup(GpsState *state);
-static void	gps_sleep(GpsState *state);
-static int gps_checkstate(GpsState *state);
-static GpsState  _gps_state[1];
-static GpsState *gps_state = _gps_state;
-static int lastcmd = 0;
-static int started    = 0;
-static char prop[] = GPS_DEVICE_PATH;
-
-static unsigned char isValid_nmea_cmd_checksum( const char *recv_cmd );
-
-static char buff[800];
-
-static int16_t gnss_GPS_satellite_used_cnt = 0;
-static int16_t gnss_Other_satellite_used_cnt = 0;
-static int16_t gnss_GPS_used_prn_buf[GPS_MAX_SVS];
-static int16_t gnss_Other_used_prn_buf[GPS_MAX_SVS];
-
-
-/*****************************************************************/
-/*****************************************************************/
-/*****                                                       *****/
-/*****       N M E A   T O K E N I Z E R                     *****/
-/*****                                                       *****/
-/*****************************************************************/
-/*****************************************************************/
-
-typedef struct {
-    const char*  p;
-    const char*  end;
-} Token;
-
-#define  MAX_NMEA_TOKENS  32
-
-typedef struct {
-    int     count;
-    Token   tokens[ MAX_NMEA_TOKENS ];
-} NmeaTokenizer;
-
-
-static int epoll_ctrlfd;
-static int gps_fd;
-static int control_fd ;
-static NmeaReader  *reader;
-static int nn, ret;
+#include "sys_gps.h"
 
 static void gps_state_lock_fix(GpsState *state) {
     int ret;
@@ -252,6 +92,10 @@ static int nmea_tokenizer_init( NmeaTokenizer*  t, const char*  p, const char*  
     int    count = 0;
     char*  q;
 
+	AIP_LOGI("called: %s ", __FUNCTION__);
+	D("p: %s ", p);
+	D("end: %s ", end);
+	
     // the initial '$' is optional
     if (p < end && p[0] == '$')
         p += 1;
@@ -268,6 +112,10 @@ static int nmea_tokenizer_init( NmeaTokenizer*  t, const char*  p, const char*  
         end -= 3;
     }
 
+	D("del useless character ");
+	D("p: %s ", p);
+	D(" end: %s ", end);
+	
     while (p < end) {
         const char*  q = p;
 
@@ -280,6 +128,8 @@ static int nmea_tokenizer_init( NmeaTokenizer*  t, const char*  p, const char*  
             t->tokens[count].end = q;
             count += 1;
         }
+		D("p: %s ", p);
+		D(" q: %s ", q);
 
         if (q < end)
             q += 1;
@@ -485,8 +335,7 @@ nmea_reader_update_date( NmeaReader*  r, Token  date, Token  mtime )
 }
 
 
-static double
-convert_from_hhmm( Token  tok )
+static double convert_from_hhmm( Token  tok )
 {
     double  val     = str2float(tok.p, tok.end);
     int     degrees = (int)(floor(val) / 100);
@@ -496,8 +345,7 @@ convert_from_hhmm( Token  tok )
 }
 
 
-static int
-nmea_reader_update_latlong( NmeaReader*  r,
+static int nmea_reader_update_latlong( NmeaReader*  r,
                             Token        latitude,
                             char         latitudeHemi,
                             Token        longitude,
@@ -529,8 +377,7 @@ nmea_reader_update_latlong( NmeaReader*  r,
 }
 
 
-static int
-nmea_reader_update_altitude( NmeaReader*  r,
+static int nmea_reader_update_altitude( NmeaReader*  r,
                              Token        altitude,
                              Token        units )
 {
@@ -627,8 +474,25 @@ nmea_reader_update_timemap( NmeaReader* r,
 }
 
 
-static void
-nmea_reader_parse( NmeaReader*  r )
+/**
+	$GPGSV,4,1,14,02,21,265,23,03,19,040,26,06,50,300,36,09,14,127,32*7F
+	$GPGSV,4,2,14,17,52,016,29,19,45,347,21,23,11,090,21,28,59,165,44*72
+	$GPGSV,4,3,14,30,02,178,33,22,00,037,,24,,,,41,,,35*75
+	$GPGSV,4,4,14,42,,,37,50,,,38*70
+	$GPGGA,080749.00,2232.518779,N,11357.062420,E,1,06,0.8,71.9,M,-1.0,M,,*44
+	$GPVTG,103.6,T,105.9,M,0.0,N,0.0,K,A*2A
+	$GPRMC,080749.00,A,2232.518779,N,11357.062420,E,0.0,103.6,070619,2.3,W,A*2E
+	$GPGSA,A,2,02,03,06,09,17,28,,,,,,,1.1,0.8,0.8*31
+	$GPGSV,4,1,14,02,21,265,23,03,19,040,27,06,50,300,35,09,14,127,32*7D
+	$GPGSV,4,2,14,17,52,016,30,19,45,347,21,23,11,090,21,28,59,165,44*7A
+	$GPGSV,4,3,14,30,02,178,33,22,00,037,,24,,,,41,,,35*75
+	$GPGSV,4,4,14,42,,,37,50,,,39*71
+	$GPGGA,080750.00,2232.518781,N,11357.062422,E,1,06,0.8,71.9,M,-1.0,M,,*49
+	$GPVTG,103.6,T,105.9,M,0.0,N,0.0,K,A*2A
+	$GPRMC,080750.00,A,2232.518781,N,11357.062422,E,0.0,103.6,070619,2.3,W,A*23
+	$GPGSA,A,2,02,03,06,09,17,28,,,,,,,1.1,0.8,0.8*31
+**/
+static void nmea_reader_parse( NmeaReader*  r )
 {
    /* we received a complete sentence, now parse it to generate
     * a new GPS fix...
@@ -652,12 +516,15 @@ nmea_reader_parse( NmeaReader*  r )
 		gps_state->callbacks.nmea_cb(mytimems, r->in, r->pos);		// Modify_Add_2 		
     }
 
-    nmea_tokenizer_init(tzer, r->in, r->in + r->pos);
+	//$GPRMC,130304.0,A,4717.115,N,00833.912,E,000.04,205.5,200601,01.3,W*7C<CR><LF>
+	//$GPGGA,014434.70,3817.13334637,N,12139.72994196,E,4,07,1.5,6.571,M,8.942,M,0.7,0016*7B<CR><LF>
+	//$GPGSV,3,1,09,01,22,037,19,03,42,075,21,06,38,247,39,07,09,176,31,0*6D<CR><LF>
+	nmea_tokenizer_init(tzer, r->in, r->in + r->pos);
 
     tok = nmea_tokenizer_get(tzer, 0);
 	
 	ptrSentence = tok.p;
-	//DFR("buffer = %s", ptrSentence);	
+	//AIP_LOGI("buffer = %s", ptrSentence);	
 	
 	if( !strchr(ptrSentence,'*') ) {		
 		return;		
@@ -738,7 +605,14 @@ nmea_reader_parse( NmeaReader*  r )
         }	
     } else if ( !memcmp(tok.p, "GSV", 3) ) {        	
 		
-		int prn = 0, i, j, num, iTotal_Sentence_num ,iCurrent_Sentence_num ,SV_InView_num_GNSS;				
+		int prn = 0;
+		int i;
+		int j;
+		int num;
+		int iTotal_Sentence_num;
+		int iCurrent_Sentence_num;
+		int SV_InView_num_GNSS;
+		
 		Token  tok_Total_Message_num   = nmea_tokenizer_get(tzer, 1);		       
     	Token  tok_Current_Message_num	= nmea_tokenizer_get(tzer, 2);    	   	
     	Token  tok_SV_InView_num  = nmea_tokenizer_get(tzer, 3); 
@@ -908,8 +782,16 @@ nmea_reader_parse( NmeaReader*  r )
 		gnss_GPS_satellite_used_cnt = 0;
 		gnss_Other_satellite_used_cnt = 0;
 		
-    } 
-#if 1
+    } else if ( !memcmp(tok.p, "VTG", 3) ) {	
+        Token  tok_fixStatus     = nmea_tokenizer_get(tzer,9);
+        if (tok_fixStatus.p[0] != '\0' && tok_fixStatus.p[0] != 'N')
+        {
+            Token  tok_bearing       = nmea_tokenizer_get(tzer,1);
+            Token  tok_speed         = nmea_tokenizer_get(tzer,5);
+            nmea_reader_update_bearing( r, tok_bearing );
+            nmea_reader_update_speed  ( r, tok_speed );
+        }
+#if 0
 	else if ( !memcmp(tok.p, "GLL", 3) ) {			
         Token  tok_fixstaus      = nmea_tokenizer_get(tzer,6);
         if (tok_fixstaus.p[0] == 'A') {
@@ -960,8 +842,7 @@ nmea_reader_parse( NmeaReader*  r )
     }
 }
 
-static void
-nmea_reader_addc( NmeaReader*  r, int  c )
+static void nmea_reader_addc( NmeaReader*  r, int  c )
 {
     int cnt;
 
@@ -1025,7 +906,7 @@ static void gps_state_done( GpsState*  s )
     do { ret=write( s->control[0], &cmd, 1 ); }
     while (ret < 0 && errno == EINTR);
 
-    DFR("gps waiting for command thread to stop");
+    AIP_LOGI("gps waiting for command thread to stop");
 	gps_sleep(s);
 
     pthread_join(s->thread, &dummy);
@@ -1035,8 +916,10 @@ static void gps_state_done( GpsState*  s )
     s->fix_freq = -1;
 
     // close the control socket pair
-    close( s->control[0] ); s->control[0] = -1;
-    close( s->control[1] ); s->control[1] = -1;
+    close( s->control[0] );
+	s->control[0] = -1;
+    close( s->control[1] );
+	s->control[1] = -1;
 
     sem_destroy(&s->fix_sem);
 	g_gpscallback = 0;
@@ -1076,7 +959,7 @@ static void gps_sleep(GpsState *state)
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1085,7 +968,7 @@ static void gps_state_start( GpsState*  s )
 {
     char  cmd = CMD_START;
     int   ret;
-	DFR("%s", __FUNCTION__);
+	AIP_LOGI("%s", __FUNCTION__);
 
 	gps_state_lock_fix(s);
 	lastcmd = CMD_START;
@@ -1096,7 +979,7 @@ static void gps_state_start( GpsState*  s )
     while (ret < 0 && errno == EINTR);
 
     if (ret != 1)
-        D("%s: could not send CMD_START command: ret=%d: %s", __FUNCTION__, ret, strerror(errno));
+        AIP_LOGI("%s: could not send CMD_START command: ret=%d: %s", __FUNCTION__, ret, strerror(errno));
 }
 
 /*****************************************************************************
@@ -1109,7 +992,7 @@ static void gps_state_start( GpsState*  s )
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1119,7 +1002,7 @@ static void gps_state_stop( GpsState*  s )
     char  cmd = CMD_STOP;
     int   ret;
 
-	DFR("%s", __FUNCTION__);
+	AIP_LOGI("%s", __FUNCTION__);
 
 	gps_state_lock_fix(s);
 	lastcmd = CMD_STOP;
@@ -1127,18 +1010,18 @@ static void gps_state_stop( GpsState*  s )
 
     do
 	{
-		DFR("try %s", __FUNCTION__);
+		AIP_LOGI("try %s", __FUNCTION__);
 		ret=write( s->control[0], &cmd, 1 );
 		if(ret < 0)
 		{
-			ALOGE("write control socket error %s", strerror(errno));
+			AIP_LOGE("write control socket error %s", strerror(errno));
 			sleep(1);
 		}
 	}
     while (ret < 0 && errno == EINTR);
 
     if (ret != 1)
-        D("%s: could not send CMD_STOP command: ret=%d: %s",
+        AIP_LOGI("%s: could not send CMD_STOP command: ret=%d: %s",
           __FUNCTION__, ret, strerror(errno));
 }
 
@@ -1153,7 +1036,7 @@ static void gps_state_stop( GpsState*  s )
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1186,7 +1069,7 @@ static int epoll_register( int  epoll_fd, int  fd )
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1210,7 +1093,7 @@ static int epoll_deregister( int  epoll_fd, int  fd )
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1226,6 +1109,10 @@ static void gps_state_thread( void*  arg )
     control_fd = state->control[1];
 	epoll_ctrlfd   = epoll_create(2);
 
+	AIP_LOGI("%s: called", __FUNCTION__);
+	
+	//D("gps_state_thread, state->fd = %d", state->fd);
+	//D("gps_state_thread, _gps_state->fd = %d", _gps_state->fd);
 
 	reader = &state->reader;
 	nmea_reader_init( reader );
@@ -1234,39 +1121,41 @@ static void gps_state_thread( void*  arg )
     // register control file descriptors for polling
     epoll_register( epoll_ctrlfd, control_fd );	
 
-    D("gps thread running");						
+    AIP_LOGI("gps thread running");						
 	
 	started = 0;
 	state->init = STATE_INIT;
 
-	D("gps thread for loop");
+	AIP_LOGI("gps thread for loop");
 	
     // now loop
     for (;;) {
         struct epoll_event   events[2];
-        int                  ne, nevents;
+        int ne;
+		int nevents;
 
         
 		nevents = epoll_wait( epoll_ctrlfd, events, 2, -1 );
 		
         if (nevents < 0) {
             //if (errno != EINTR)
-            //    ALOGE("epoll_wait() unexpected error: %s", strerror(errno));
+            //    AIP_LOGE("epoll_wait() unexpected error: %s", strerror(errno));
             continue;
         }
         //D("gps thread received %d events", nevents);
         for (ne = 0; ne < nevents; ne++) {
 			
             if ((events[ne].events & (EPOLLERR|EPOLLHUP)) != 0) {
-                ALOGE("EPOLLERR or EPOLLHUP after epoll_wait() !?");
-                //goto GpsError;
+                AIP_LOGE("EPOLLERR or EPOLLHUP after epoll_wait() !?");
+                //goto Exit;//kang del
+
 				gps_closetty(state);
 			    started = 0;
 				state->init = STATE_INIT;
 
-				DFR("gps device error restart");
+				AIP_LOGI("gps device error restart");
 				
-				gps_state_start(state);
+				gps_state_start(state);//kang
             }
             if ((events[ne].events & EPOLLIN) != 0) {
 				
@@ -1276,39 +1165,54 @@ static void gps_state_thread( void*  arg )
                 {
                     char  cmd = 255;
                     int   ret;
-                    D("gps control fd event");
+                    AIP_LOGI("gps control fd event");
                     do {
                         ret = read( fd, &cmd, 1 );
                     } while (ret < 0 && errno == EINTR);
 
                     if (cmd == CMD_QUIT) {						
 						
-                        D("gps thread quitting on demand");
+                        AIP_LOGI("gps thread quitting on demand");
                         goto Exit;
                     }
                     else if (cmd == CMD_START)
 					{						
-						DFR("%s: SYS GNSS Driver Version : %s", __FUNCTION__, SYS_GNSS_DRIVER_LIB_VERSION );
+						AIP_LOGI("%s: SYS GNSS Driver Version : %s", __FUNCTION__, SYS_GNSS_DRIVER_LIB_VERSION );
 						
                         if (!started)
 						{
 					
-                            D("gps thread starting  location_cb=%p", state->callbacks.location_cb);
+                            AIP_LOGI("gps thread starting  location_cb=%p", state->callbacks.location_cb);
                             started = 1;
                             state->init = STATE_START;
 							
 							/* handle wakeup routine*/
-							gps_wakeup(state);															
+							gps_wakeup(state);	
+							AIP_LOGI("%d  _gps_state->fd = %d", __LINE__, _gps_state->fd);
                         }
 						else 
-							D("LM already start");
+							AIP_LOGI("LM already start");
 
                     }
                     else if (cmd == CMD_STOP) {
 						
-                        if (started) {
+                        if (started)
+						{
+							AIP_LOGI("gps thread stoping  location_cb=%p", state->callbacks.location_cb);
                             state->init = STATE_INIT;	
 						}
+						else
+						{
+							AIP_LOGI("LM no starting, no stoping");
+							continue;
+						}
+
+						if( state->init == STATE_INIT && lastcmd == CMD_STOP && started == 1)
+						{
+							gps_sleep(state);
+							AIP_LOGI("LM go to sleep");
+						}
+						
                     }	
                 }				
 				else if (fd == gps_fd)//receive data
@@ -1320,26 +1224,25 @@ static void gps_state_thread( void*  arg )
 					ret = read( fd, buff, sizeof(buff) );
 												
 					if (ret == 0) {
-						
 						continue;
 					}
 					else if (ret < 0) {
 						if (errno == EINTR)
 							continue;
 						if (errno != EWOULDBLOCK)
-							ALOGE("error while reading from gps daemon socket: %s:", strerror(errno));
+							AIP_LOGE("error while reading from gps daemon socket: %s:", strerror(errno));
 				
 						break;
 					}
 						
-					D("received %d bytes: %.*s", ret, ret, buff);
+					AIP_LOGI("received %d bytes: %.*s", ret, ret, buff);
 						
 					for (nn = 0; nn < ret; nn++) {
-						nmea_reader_addc( reader, buff[nn] );	
+						nmea_reader_addc( reader, buff[nn] );//kang     test	
 					}						
 				}
                 else {
-                    ALOGE("epoll_wait() returned unkown fd %d , resign fd to gps_fd", fd);
+                    AIP_LOGE("epoll_wait() returned unkown fd %d , resign fd to gps_fd", fd);
 					gps_fd = _gps_state->fd; //resign fd to gps_fd
                 }
             }
@@ -1350,11 +1253,11 @@ Exit:
 	{
 		void *dummy;
 		close(epoll_ctrlfd);	
-		pthread_join(state->nmea_thread, &dummy);
+//		pthread_join(state->nmea_thread, &dummy);//kang del
 
 		close(gps_fd);
 		gps_fd = -1;
-		DFR("gps control thread destroyed");
+		AIP_LOGI("gps control thread destroyed");
 	}
 
     return;
@@ -1370,7 +1273,7 @@ Exit:
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1378,7 +1281,7 @@ Exit:
 static int gps_opentty(GpsState *state)
 {
 
-	DFR("%s", __FUNCTION__);
+	AIP_LOGI("called %s", __FUNCTION__);
 
 	if(strlen(prop) <= 0)
 	{
@@ -1389,7 +1292,8 @@ static int gps_opentty(GpsState *state)
 	if(state->fd != -1) {
 		gps_closetty(state);
 	}
-		
+
+	/*
     do {
         state->fd = open( prop, O_RDWR | O_NOCTTY | O_NONBLOCK);
     } while (state->fd < 0 && errno == EINTR);
@@ -1399,17 +1303,30 @@ static int gps_opentty(GpsState *state)
         char device[] = GPS_DEVICE_PATH;
 
         do {
+			sleep(1);
+			AIP_LOGI("could not open gps serial device %s:[ %s, %d], reopen  gps device ", prop, strerror(errno), errno);
             state->fd = open( device, O_RDWR | O_NOCTTY | O_NONBLOCK);
-        } while (state->fd < 0 && errno == EINTR);
+        } while (state->fd < 0);//&& ((errno == EINTR) || (errno == ENODEV) || (errno == ENOENT));
 
         if (state->fd < 0)
         {
-            ALOGE("could not open gps serial device %s: %s", prop, strerror(errno) );
+            AIP_LOGE("could not open gps serial device %s:[ %s, %d]", prop, strerror(errno), errno);
             return -1;
         }
-    }
+    }*/
 
-    D("gps will read from %s", prop);
+	char device[] = GPS_DEVICE_PATH;
+    state->fd = open( device, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	
+	if(state->fd < 0 ) {
+		do {
+			sleep(1);
+			AIP_LOGE("could not open gps serial device %s, errno = %d, (%s), reopen  gps device ", prop, errno, strerror(errno));
+			state->fd = open( device, O_RDWR | O_NOCTTY | O_NONBLOCK);
+		} while (state->fd < 0);
+	}
+
+    AIP_LOGI("gps will read from %s", prop);
 
     // disable echo on serial lines
     //if ( isatty( state->fd ) ) {
@@ -1429,6 +1346,8 @@ static int gps_opentty(GpsState *state)
     //}
 
 	epoll_register( epoll_ctrlfd, state->fd );
+	AIP_LOGI("%s  state->fd = %d", __FUNCTION__, state->fd);
+	AIP_LOGI("%s  _gps_state->fd = %d", __FUNCTION__, _gps_state->fd);
 
 	return 0;
 }
@@ -1443,7 +1362,7 @@ static int gps_opentty(GpsState *state)
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1452,7 +1371,7 @@ static void gps_closetty(GpsState *s)
 {
 	if(s->fd != -1)
 	{
-		DFR("%s", __FUNCTION__);
+		AIP_LOGI("called %s", __FUNCTION__);
 		// close connection to the QEMU GPS daemon
 		epoll_deregister( epoll_ctrlfd, s->fd );
 
@@ -1471,7 +1390,7 @@ static void gps_closetty(GpsState *s)
  Called By    : 
  
   History        :
-  1.Date         : 2019/5/24
+  1.Date         : 2019/6/01
     Author       : Kang
     Modification : Created function
 
@@ -1492,26 +1411,26 @@ static void gps_state_init( GpsState*  state )
 
 
     if (sem_init(&state->fix_sem, 0, 1) != 0) {
-      D("gps semaphore initialization failed! errno = %d", errno);
+      AIP_LOGI("gps semaphore initialization failed! errno = %d", errno);
       return;
     }
 
     if ( socketpair( AF_LOCAL, SOCK_STREAM, 0, state->control ) < 0 ) {
-        ALOGE("could not create thread control socket pair: %s", strerror(errno));
+        AIP_LOGE("could not create thread control socket pair: %s", strerror(errno));
         goto Fail;
     }
 	
 
-	state->thread = state->callbacks.create_thread_cb("locosys_gps", gps_state_thread, state);
+	state->thread = state->callbacks.create_thread_cb("sys_gps", gps_state_thread, state);
     if (!state->thread)
 	{
-        ALOGE("could not create gps thread: %s", strerror(errno));
+        AIP_LOGE("could not create gps thread: %s", strerror(errno));
         goto Fail;
     }
     state->callbacks.set_capabilities_cb(GPS_CAPABILITY_SCHEDULING);
 	
 	//locosys_gps_start();//add startNavigating
-	D("gps state initialized");
+	AIP_LOGI("gps state initialized");
 		
 
     return;
@@ -1534,7 +1453,8 @@ static int sys_gps_init(GpsCallbacks* callbacks)
 {
     GpsState*  s = _gps_state;
 
-	D("gps state initializing %d",s->init);
+	AIP_LOGI("gps state initializing %d",s->init);
+	D("%s: called, s->fd = %d", __FUNCTION__, s->fd);
 
     s->callbacks = *callbacks;
     if (!s->init)
@@ -1550,7 +1470,8 @@ static void sys_gps_cleanup(void)
 {
     GpsState*  s = _gps_state;
 
-	D("%s: called", __FUNCTION__);
+	AIP_LOGI("%s: called", __FUNCTION__);
+	//AIP_LOGI("%s: called, s->fd = %d", __FUNCTION__, s->fd);
 
     if (s->init)
         gps_state_done(s);
@@ -1560,14 +1481,16 @@ static void sys_gps_cleanup(void)
 static int sys_gps_start()
 {
     GpsState*  s = _gps_state;
-	D("%s: called", __FUNCTION__ );
+	AIP_LOGI("%s: called", __FUNCTION__ );
+	//D("%s: called, s->fd = %d", __FUNCTION__, s->fd);
 
 	if(gps_checkstate(s) == -1)
 	{
-		DFR("%s: called with uninitialized state !!", __FUNCTION__);
+		AIP_LOGI("%s: called with uninitialized state !!", __FUNCTION__);
 		return -1;
 	}
 	gps_state_start(s);
+	AIP_LOGI("GPS_STATUS_SESSION_BEGIN");
 
 	GPS_STATUS_CB(s->callbacks, GPS_STATUS_SESSION_BEGIN);
 
@@ -1580,17 +1503,18 @@ static int sys_gps_stop()
 {
     GpsState*  s = _gps_state;
 
-	D("%s: called", __FUNCTION__ );
+	AIP_LOGI("%s: called", __FUNCTION__ );
+	//D("%s: called, s->fd = %d", __FUNCTION__, s->fd);
 
 	if(gps_checkstate(s) == -1)
 	{
-		DFR("%s: called with uninitialized state !!", __FUNCTION__);
+		AIP_LOGI("%s: called with uninitialized state !!", __FUNCTION__);
 		return -1;
 	}
 
 	//close LM first
 	gps_state_stop(s);
-	D("Try to change state to init");
+	AIP_LOGI("Try to change state to init, GPS_STATUS_SESSION_END");
 	//change state to INIT
 	GPS_STATUS_CB(s->callbacks, GPS_STATUS_SESSION_END);
 
@@ -1604,13 +1528,13 @@ static void sys_gps_set_fix_frequency(int freq)
 
 	if(gps_checkstate(s) == -1)
 	{
-		DFR("%s: called with uninitialized state !!", __FUNCTION__);
+		AIP_LOGI("%s: called with uninitialized state !!", __FUNCTION__);
 		return;
 	}
 
     s->fix_freq = (freq <= 0) ? 1 : freq;
 
-    D("gps fix frquency set to %d secs", freq);
+    AIP_LOGI("gps fix frquency set to %d secs", freq);
 }
 
 static int sys_gps_inject_time(GpsUtcTime time, int64_t timeReference, int uncertainty)
@@ -1638,13 +1562,13 @@ static int sys_gps_set_position_mode(GpsPositionMode mode, GpsPositionRecurrence
 
 	if (mode != GPS_POSITION_MODE_STANDALONE)
 	{
-		D("%s: set GPS POSITION mode error! (mode:%d) ", __FUNCTION__, mode);
-		D("Set as standalone mode currently! ");
+		AIP_LOGI("%s: set GPS POSITION mode error! (mode:%d) ", __FUNCTION__, mode);
+		AIP_LOGI("Set as standalone mode currently! ");
 		//        return -1;
 	}
 
 	if (!s->init) {
-		D("%s: called with uninitialized state !!", __FUNCTION__);
+		AIP_LOGI("%s: called with uninitialized state !!", __FUNCTION__);
 		return -1;
 	}
 
@@ -1653,7 +1577,7 @@ static int sys_gps_set_position_mode(GpsPositionMode mode, GpsPositionRecurrence
 	{
 		s->fix_freq =1;
 	}
-    D("gps fix frquency set to %d sec", s->fix_freq);
+    AIP_LOGI("gps fix frquency set to %d sec", s->fix_freq);
     
     return 0;
 }
@@ -1668,7 +1592,7 @@ static int gps_checkstate(GpsState *s)
 
 		if(!s->init)
 		{
-			ALOGE("%s: still called with uninitialized state !!", __FUNCTION__);
+			AIP_LOGE("%s: still called with uninitialized state !!", __FUNCTION__);
 			return -1;
 		}
     }
@@ -1678,6 +1602,7 @@ static int gps_checkstate(GpsState *s)
 
 static const void* sys_gps_get_extension(const char* name)
 {
+	AIP_LOGI("%s: no GPS extension for %s is found", __FUNCTION__, name);
 	
     return NULL;
 }
@@ -1756,7 +1681,7 @@ static void gps_dev_send(int fd, char *msg)
 
   n = 0;
 
-  DFR("function gps_dev_send: %s", msg);
+  AIP_LOGI("function gps_dev_send: %s", msg);
   do {
 
     ret = write(fd, msg + n, i - n);
@@ -1791,17 +1716,31 @@ static const GpsInterface* gps__get_gps_interface(struct gps_device_t* dev)
     return &sysGpsInterface;
 }
 
+int close_gps(struct hw_device_t *device)
+{
+	GpsState*  s = _gps_state;
+	if(NULL != s)
+	{
+		AIP_LOGI("%s", __FUNCTION__);
+		gps_closetty(s);
+	}
+	
+
+	return 0;
+}
+
 static int open_gps(const struct hw_module_t* module, char const* name,
         struct hw_device_t** device)
 {
+	AIP_LOGI("open_gps enter");//[ADD] by kang
+	
     struct gps_device_t *dev = malloc(sizeof(struct gps_device_t));
     memset(dev, 0, sizeof(*dev));
-	DFR("open_gps enter");//[ADD] by kang
 
     dev->common.tag = HARDWARE_DEVICE_TAG;
     dev->common.version = 0;
     dev->common.module = (struct hw_module_t*)module;
-	//dev->common.close = (int (*)(struct hw_device_t*))close_lights;
+	dev->common.close = (int (*)(struct hw_device_t*))close_gps;
     dev->get_gps_interface = gps__get_gps_interface;
 
     *device = (struct hw_device_t*)dev;
@@ -1815,7 +1754,7 @@ static struct hw_module_methods_t gps_module_methods = {
 
 struct hw_module_t HAL_MODULE_INFO_SYM = {
     .tag = HARDWARE_MODULE_TAG,
-    .version_major = 1,
+    .version_major = 0,
     .version_minor = 0,
     .id = GPS_HARDWARE_MODULE_ID,
     .name = "SYS GNSS Module",
