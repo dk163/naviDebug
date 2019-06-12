@@ -611,11 +611,7 @@ static void nmea_reader_parse( NmeaReader* r )
 		int iTotal_Sentence_num;
 		int iCurrent_Sentence_num;
 		int SV_InView_num_GNSS;
-
-		//$GPGSV,4,1,14,02,21,265,23,03,19,040,27,06,50,300,35,09,14,127,32*7D
-		//$GPGSV,4,2,14,17,52,016,30,19,45,347,21,23,11,090,21,28,59,165,44*7A
-		//$GPGSV,4,3,14,30,02,178,33,22,00,037,,24,,,,41,,,35*75
-		//$GPGSV,4,4,14,42,,,37,50,,,39*71
+		
 		Token  tok_Total_Message_num   = nmea_tokenizer_get(tzer, 1);		       
     	Token  tok_Current_Message_num	= nmea_tokenizer_get(tzer, 2);    	   	
     	Token  tok_SV_InView_num  = nmea_tokenizer_get(tzer, 3); 
@@ -691,8 +687,6 @@ static void nmea_reader_parse( NmeaReader* r )
 				r->gnss_sv_info.num_svs = SV_InView_num_GNSS;				
 				r->gnss_sv_info.size = sizeof(GnssSvStatus);				
 				r->sv_status_changed = 1;
-
-				AIP_LOGI("SV_InView_num_GNSS: %d ", SV_InView_num_GNSS);
 			}	
 					
 		}
@@ -749,16 +743,7 @@ static void nmea_reader_parse( NmeaReader* r )
 			}
 		}	
 	
-    } else if ( !memcmp(tok.p, "VTG", 3) ) {	
-        Token tok_fixStatus = nmea_tokenizer_get(tzer,9);
-        if (tok_fixStatus.p[0] != '\0' && tok_fixStatus.p[0] != 'N')
-        {
-            Token  tok_bearing = nmea_tokenizer_get(tzer,1);
-            Token  tok_speed = nmea_tokenizer_get(tzer,5);
-            nmea_reader_update_bearing( r, tok_bearing );
-            nmea_reader_update_speed  ( r, tok_speed );
-        }
-	} else if ( !memcmp(tok.p, "RMC", 3) ) {
+    } else if ( !memcmp(tok.p, "RMC", 3) ) {
 		
         Token  tok_fixStatus = nmea_tokenizer_get(tzer,2);	
 			
@@ -781,51 +766,32 @@ static void nmea_reader_parse( NmeaReader* r )
 			nmea_reader_update_speed( r, tok_speed );
 			nmea_reader_update_bearing( r, tok_bearing );
 			nmea_reader_update_date( r, tok_date, tok_time );
-        }		
-		if (gps_state->callbacks.location_cb) {
+        }
+
+		/*if (gps_state->callbacks.location_cb) {
 			gps_state->callbacks.location_cb( &gps_state->reader.fix );
 			gps_state->reader.fix.flags = 0;					
 		}	
 		
-		if (gps_state->callbacks.gnss_sv_status_cb) {
-//#ifdef GPS_DEBUG
-		int i;
-		char buffer[512];
-		char *p;
-		int SV_VAlID = 0;
-
-		p = buffer;
-		for(i = 0; i < r->gnss_sv_info.num_svs; i++) {
-			int in_fix = r->gnss_sv_info.gnss_sv_list[i].flags & GNSS_SV_FLAGS_USED_IN_FIX;
-			if(in_fix) {
-				SV_VAlID += 1;
-			}
-			
-			p += sprintf(p, " (%c%02d,%.0f,%c)",
-			r->gnss_sv_info.gnss_sv_list[i].constellation == GNSS_CONSTELLATION_GPS ? 'G' :
-			r->gnss_sv_info.gnss_sv_list[i].constellation == GNSS_CONSTELLATION_BEIDOU ? 'B' :
-			r->gnss_sv_info.gnss_sv_list[i].constellation == GNSS_CONSTELLATION_GLONASS ? 'L' : '?',
-			r->gnss_sv_info.gnss_sv_list[i].svid,
-			r->gnss_sv_info.gnss_sv_list[i].c_n0_dbhz,
-			in_fix ? 'U' : '-');
-		
-			if(i % 8 == 7) {
-				p += sprintf(p, "\n\t");
-			}
-		}
-		if(p - buffer) {
-			AIP_LOGI("sv_list[] = %s", buffer);
-			AIP_LOGI("SV_VAlID = %d", SV_VAlID);
-		}
-//#endif
+		if (gps_state->callbacks.gnss_sv_status_cb) {						
 			gps_state->callbacks.gnss_sv_status_cb( &gps_state->reader.gnss_sv_info );
 			gps_state->reader.sv_status_changed = 0;				
 		}
 		
 		gnss_GPS_satellite_used_cnt = 0;
-		gnss_Other_satellite_used_cnt = 0;
+		gnss_Other_satellite_used_cnt = 0;*/
+		
     } 
-	
+	else if ( !memcmp(tok.p, "VTG", 3) ) {	
+        Token  tok_fixStatus     = nmea_tokenizer_get(tzer,9);
+        if (tok_fixStatus.p[0] != '\0' && tok_fixStatus.p[0] != 'N')
+        {
+            Token  tok_bearing       = nmea_tokenizer_get(tzer,1);
+            Token  tok_speed         = nmea_tokenizer_get(tzer,5);
+            nmea_reader_update_bearing( r, tok_bearing );
+            nmea_reader_update_speed  ( r, tok_speed );
+        }
+	}
 #if 0
 	else if ( !memcmp(tok.p, "GLL", 3) ) {			
         Token  tok_fixstaus      = nmea_tokenizer_get(tzer,6);
@@ -869,6 +835,20 @@ static void nmea_reader_parse( NmeaReader* r )
         tok.p -= 2;
     }
 	
+	if (gps_state->callbacks.location_cb) {
+			gps_state->reader.fix.size = sizeof(GpsLocation);
+			gps_state->callbacks.location_cb( &gps_state->reader.fix );
+			gps_state->reader.fix.flags = 0;					
+		}	
+		
+	if (gps_state->callbacks.gnss_sv_status_cb) {						
+		gps_state->callbacks.gnss_sv_status_cb( &gps_state->reader.gnss_sv_info );
+		gps_state->reader.sv_status_changed = 0;				
+	}
+	
+	gnss_GPS_satellite_used_cnt = 0;
+	gnss_Other_satellite_used_cnt = 0;
+		
     if (!gps_state->first_fix &&
         gps_state->init == STATE_INIT &&
         r->fix.flags & GPS_LOCATION_HAS_LAT_LONG) {
