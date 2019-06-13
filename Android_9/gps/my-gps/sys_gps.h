@@ -59,7 +59,11 @@
 #ifdef GPS_DEBUG
 //#  define  D(...)   ALOGD(__VA_ARGS__)
 //#define D(format,...) ALOGD(__FILE__"(%s:%d)"format"", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+
 #define D(format,...) ALOGD("(%s:%d) "format" ", __FUNCTION__, __LINE__, ##__VA_ARGS__) 
+
+#define D(format,...) ALOGD("(%s:%d)"format"", __FUNCTION__, __LINE__, ##__VA_ARGS__) 
+
 #else
 #  define  D(...)   ((void)0)
 #endif
