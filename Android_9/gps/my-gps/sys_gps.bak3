@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (C), 2019-2029, DCN Co., Ltd.
+  Copyright (C), 2019-2022, DCN Co., Ltd.
 
  ******************************************************************************
   File Name     : sys_gps.c
@@ -826,7 +826,45 @@ static void nmea_reader_parse( NmeaReader* r )
 		gnss_Other_satellite_used_cnt = 0;
     } 
 	
-
+#if 0
+	else if ( !memcmp(tok.p, "GLL", 3) ) {			
+        Token  tok_fixstaus      = nmea_tokenizer_get(tzer,6);
+        if (tok_fixstaus.p[0] == 'A') {
+          Token  tok_latitude      = nmea_tokenizer_get(tzer,1);
+          Token  tok_latitudeHemi  = nmea_tokenizer_get(tzer,2);
+          Token  tok_longitude     = nmea_tokenizer_get(tzer,3);
+          Token  tok_longitudeHemi = nmea_tokenizer_get(tzer,4);
+          Token  tok_time          = nmea_tokenizer_get(tzer,5);
+          nmea_reader_update_time(r, tok_time);
+          nmea_reader_update_latlong(r, tok_latitude,
+                                        tok_latitudeHemi.p[0],
+                                        tok_longitude,
+                                        tok_longitudeHemi.p[0]);
+        }						
+    } 	
+	else if ( !memcmp(tok.p, "VTG", 3) ) {	
+        Token  tok_fixStatus     = nmea_tokenizer_get(tzer,9);
+        if (tok_fixStatus.p[0] != '\0' && tok_fixStatus.p[0] != 'N')
+        {
+            Token  tok_bearing       = nmea_tokenizer_get(tzer,1);
+            Token  tok_speed         = nmea_tokenizer_get(tzer,5);
+            nmea_reader_update_bearing( r, tok_bearing );
+            nmea_reader_update_speed  ( r, tok_speed );
+        }
+    } else if ( !memcmp(tok.p, "ZDA", 3) ) {	
+        Token  tok_time;
+        Token  tok_year  = nmea_tokenizer_get(tzer,4);
+        if (tok_year.p[0] != '\0') {
+          Token  tok_day   = nmea_tokenizer_get(tzer,2);
+          Token  tok_mon   = nmea_tokenizer_get(tzer,3);
+          nmea_reader_update_cdate( r, tok_day, tok_mon, tok_year );
+        }
+        tok_time  = nmea_tokenizer_get(tzer,1);
+        if (tok_time.p[0] != '\0') {
+          nmea_reader_update_time(r, tok_time);
+        }	
+    } 
+#endif	
 	else {
         tok.p -= 2;
     }
@@ -1249,7 +1287,9 @@ static void gps_state_thread( void*  arg )
 
 Exit:
 	{
+		void *dummy;
 		close(epoll_ctrlfd);	
+//		pthread_join(state->nmea_thread, &dummy);//kang del
 
 		close(gps_fd);
 		gps_fd = -1;
@@ -1685,7 +1725,7 @@ static const GpsInterface* gps__get_gps_interface(struct gps_device_t* dev)
     return &sysGpsInterface;
 }
 
-static int close_gps(struct hw_device_t *device)
+int close_gps(struct hw_device_t *device)
 {
 	GpsState*  s = _gps_state;
 	if(NULL != s)
