@@ -1,0 +1,9 @@
+vndbinder_use(hal_gnss_default)
+dontaudit hal_gnss_default self:udp_socket create;
+allow hal_gnss_default vndbinder_device:chr_file { ioctl open write read map };
+allow hal_gnss_default property_socket:sock_file { write };
+allow hal_gnss_default init:unix_stream_socket { connectto write read accept };
+allow hal_gnss_default serial_device:chr_file { open ioctl read write };
+allow hal_gnss_default tty_device:chr_file { open ioctl read write };
+
+

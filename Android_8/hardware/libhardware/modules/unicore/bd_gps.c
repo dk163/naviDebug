@@ -474,6 +474,7 @@ static int nmea_reader_get_timestamp(NmeaReader*  r, Token  tok, time_t *timesta
 
 	ttime = mktime( &tm );
 	*timestamp = ttime - r->utc_diff;
+	//D("*timestamp : %ld ", *timestamp);
 
 	return 0;
 }
@@ -2076,8 +2077,25 @@ static void gps_state_init( GpsState*  state )
 		return;
 	}
 
+	//[ADD-BEGIN] by dk
+	char productName[PROPERTY_VALUE_MAX] = {'\0'};
+	char device_4g[PROPERTY_VALUE_MAX] = {"/dev/ttyUSB1"};
+	char device[PROPERTY_VALUE_MAX] = {'\0'};
+	
+	property_get("ro.build.product", productName, "default");
+	if ((strstr(productName, "t7_p_3a23")) != NULL) 
+	{
+		strncpy(device, device_4g, sizeof(device_4g));
+	} 
+	else 
+	{
+		strncpy(device, GPS_DEVICE, sizeof(GPS_DEVICE));
+	}
+	DFR("project name: %s, gps path: %s", productName, device);
+	//[ADD-END]
+	
 	// look for a kernel-provided device name
-	if (property_get("ro.kernel.android.gps", prop, GPS_DEVICE) == 0) {
+	if (property_get("ro.kernel.android.gps", prop, device) == 0) {
 		DFR("no kernel-provided gps device name");
 		DFR("please set ro.kernel.android.gps property");
 		return;
@@ -2085,7 +2103,7 @@ static void gps_state_init( GpsState*  state )
 
 	if(access(prop, R_OK)) {
 		DFR("no permissions on %s", prop);
-		return;
+		//return;//del
 	}
 
 	if ( socketpair( AF_LOCAL, SOCK_STREAM, 0, state->control ) < 0 ) {
