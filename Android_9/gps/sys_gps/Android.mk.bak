@@ -1,0 +1,29 @@
+LOCAL_PATH:= $(call my-dir)
+
+##################################
+include $(CLEAR_VARS)
+
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE := gps.tbox_gps
+
+LOCAL_C_INCLUDES += sys_gps.h
+LOCAL_SRC_FILES := sys_gps.c
+
+LOCAL_C_FLAGS := -Wno-unused-parameter Wall -Wno-unused-parameter -Wno-unused-variable -Wno-logical-op-parentheses\
+                 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-unused-function
+
+LOCAL_SHARED_LIBRARIES := liblog libcutils libhardware 
+
+$(warning  target device: $(TARGET_DEVICE))
+TARGET_DEVICE:=chinatsp_s203_p_8q
+
+ifeq ($(findstring chinatsp_s203_p_8q, $(TARGET_DEVICE)), chinatsp_s203_p_8q)
+LOCAL_CFLAGS += -DCHINATSP_S203_P_8Q=\"chinatsp_s203_p_8q\"
+$(warning  target device: $(TARGET_DEVICE))
+endif
+
+ifeq ($(findstring chinatsp_f202_p_8q, $(TARGET_DEVICE)), chinatsp_f202_p_8q)
+LOCAL_CFLAGS += -DCHINATSP_F202_P_8Q=\"chinatsp_f202_p_8q\"
+endif
+
+include $(BUILD_SHARED_LIBRARY)

@@ -12,10 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+bootstrap_go_package {
+    // name and pkgPath need to  according to your module
+    name: "soong-sys_define",
+    pkgPath: "hardware/libhardware/modules/sys_gps",
+    deps: [
+        "blueprint",
+        "blueprint-pathtools",
+        "soong",
+        "soong-android",
+        "soong-cc",
+        "soong-genrule",
+    ],
+    srcs: [
+          // include new add .go file
+          "define.go",
+    ],
+    pluginFor: ["soong_build"],
+}
+
+
+sys_gps_defaults {
+    name: "sys_gps_defaults",
+}
+
+
+
 cc_library_shared {
-    name: "gps.tbox_gpsold",
+    name: "gps.tbox_gps",
+    
     relative_install_path: "hw",
     vendor: true,
+    
+    defaults: [
+        "sys_gps_defaults",
+    ],
+    
     srcs: [
         "sys_gps.c"
     ],

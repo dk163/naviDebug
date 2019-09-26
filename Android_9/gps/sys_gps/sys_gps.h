@@ -35,8 +35,11 @@
 #include <time.h>
 #include <sys/inotify.h>
 #include <poll.h>
+#include <string.h>
+#include <stdlib.h>
 
-#define  LOG_TAG   "sys_gnss"
+
+#define  LOG_TAG   "sys_gps"
 
 #include <cutils/log.h>
 #include <cutils/sockets.h>
@@ -53,18 +56,39 @@ extern "C"{
 // GPS driver version	
 #define	SYS_GNSS_DRIVER_LIB_VERSION	"SYS_GNSS_LIB_V0.0.1"
 
-//	GPS Baudrate = 115200	==>		GPS_DEVICE_BAUDRATE = B115200
-#define GPS_DEVICE_BAUDRATE		B115200
 
+#ifdef CHINATSP_F202_P_8Q
+#define GPS_DEVICE_BAUDRATE		B115200
 // This "path" for your UART port
-#define GPS_DEVICE_PATH		"/dev/ttyUSB1"
+#define GPS_DEVICE_PATH "/dev/ttyUSB1"
+
+#define GPS_DEVICE_TMP "/dev/ttyUSB" 
+#define GPS_READLINK_CMD "readlink /sys/class/tty/ttyUSB"
+#define GPS_USB_KEYWORD "1.1/tty"
+#endif
+
+#ifdef CHINATSP_S203_P_8Q
+#define GPS_DEVICE_BAUDRATE		B9600
+#define GPS_DEVICE_PATH "/dev/ttyLP2"
+#else
+#define GPS_DEVICE_PATH "/dev/ttyUSB1"
+#endif
+
+
+#ifndef GPS_DEVICE_BAUDRATE    //如果a没有被定义
+//GPS Baudrate = 115200	==>		GPS_DEVICE_BAUDRATE = B115200
+#define GPS_DEVICE_BAUDRATE		B115200
+#endif
+
+
+#define TRY_TIMES 60
+#define ARRAY_NORMAL_SIZE 256
 
 #define	 NMEA_MAX_SIZE 168
 
 #define	 CMD_MAX_LEN 166
 
-//#define  GPS_DEBUG //debug flag
-#define TYR_TIMES 30
+//#define  GPS_DEBUG
 
 #define  AIP_LOGI(...)   ALOGI(__VA_ARGS__)
 #define  AIP_LOGE(...)   ALOGE(__VA_ARGS__)
@@ -123,6 +147,7 @@ typedef struct {
     sem_t                   fix_sem;
     int                     first_fix;
     NmeaReader              reader;
+	int			            rnss_mode;
 } GpsState;
 
 
@@ -131,7 +156,7 @@ static GpsState  _gps_state[1];
 static GpsState *gps_state = _gps_state;
 static int lastcmd = 0;
 static int started    = 0;
-static const char prop[] = GPS_DEVICE_PATH;
+static char prop[128] = {'0'};
 
 static char buff[800];
 
