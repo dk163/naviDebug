@@ -176,6 +176,7 @@ typedef struct {
 	struct timespec		ts_last_active;
 } GpsState;
 
+struct timespec		ts_idle_timer;
 
 GpsCallbacks* g_gpscallback = 0;
 
@@ -983,6 +984,7 @@ static void nmea_reader_parse( NmeaReader*  r )
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &gps_state->ts_last_active);
+    clock_gettime(CLOCK_MONOTONIC, &ts_idle_timer);
 
 	//--GSA,--GGA,--GSV
 	if ( !memcmp(tok.p, "GPG", 3) || !memcmp(tok.p, "GNG", 3) || !memcmp(tok.p, "BDG", 3) || !memcmp(tok.p, "GBG", 3))
@@ -1261,6 +1263,7 @@ static void nmea_reader_parse( NmeaReader*  r )
 
 		check_rnss_mode(r);
 		clock_gettime(CLOCK_MONOTONIC, &gps_state->ts_last_active);
+        clock_gettime(CLOCK_MONOTONIC, &ts_idle_timer);
 
 	} else if ( !memcmp(tok.p, "VTG", 3) ) {
 
@@ -1809,6 +1812,17 @@ static void gps_nmea_thread( void*  arg )
 				else
 					current_bps = 9600;
 				init_serial(state->fd, current_bps);
+			}
+
+            if(time_diff(&ts, &ts_idle_timer) > 20000) {
+                DFR("gps idle for %u ms, current[%lu,%lu], last[%lu,%lu], close gps device ",
+                time_diff(&ts, &ts_idle_timer),
+                ts.tv_sec, ts.tv_nsec,
+                ts_idle_timer.tv_sec,
+                ts_idle_timer.tv_nsec);
+
+                gps_closetty(state);
+                clock_gettime(CLOCK_MONOTONIC, &ts_idle_timer);
 			}
 		}
 
